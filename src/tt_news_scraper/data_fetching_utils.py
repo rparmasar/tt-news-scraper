@@ -157,6 +157,13 @@ def fetch_guardian_headlines(
     )
 
     if not response.ok:
+        logger.warning(
+            f"Got HTTP {response.status_code} for {url}, retrying in 2s..."
+        )
+        time.sleep(2)
+        response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
+
+    if not response.ok:
         logger.error(
             f"Failed to fetch Guardian page {url}: HTTP {response.status_code}"
         )
