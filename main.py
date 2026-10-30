@@ -1,44 +1,128 @@
-"""Trinidad & Tobago News Scraper - Fetches headlines and article links from Trinidad Express."""
+"""Trinidad & Tobago News Scraper - Fetches headlines from Trinidad Express and Guardian."""
 
 import logging
+from typing import Optional
 
-from src.tt_news_scraper.data_fetching_utils import fetch_express_headlines
+import pandas as pd
+
+from src.tt_news_scraper.data_fetching_utils import (
+    fetch_express_headlines,
+    fetch_guardian_headlines,
+)
 
 logger = logging.getLogger(__name__)
+
+# Canonical column schema for unified output
+CANONICAL_COLUMNS = ["title", "url", "author", "date", "summary"]
+
+
+def _normalize_columns(df: pd.DataFrame, source: str) -> pd.DataFrame:
+    """Rename columns to canonical schema based on source."""
+    df = df.copy()
+
+    if source == "express":
+        # Express column mapping
+        col_map = {
+            "title": "title",
+            "partial_link_to_full_article": "url",
+            "author": "author",
+            "published_date": "date",
+            "article_summary": "summary",
+        }
+    else:  # guardian
+        # Guardian column mapping
+        col_map = {
+            "headline": "title",
+            "url": "url",
+            "author": "author",
+            "date": "date",
+            "description": "summary",
+        }
+
+    df.rename(columns=col_map, inplace=True)
+
+    # Normalize date format to ISO string for consistency
+    if not df["date"].empty:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.isoformat()
+
+    return df
+
+
+def _fetch_unified_dataset(
+    mode: str, limit: Optional[int] = None, search_term: Optional[str] = None
+) -> pd.DataFrame:
+    """Unified entry point for fetching headlines from any supported source."""
+    BASE_URL = "https://trinidadexpress.com/search/?t=article&sd=desc"
+
+    if mode == "express":
+        url = f"{BASE_URL}&l={limit or 10}&nsa=eedition"
+        logger.info(f"Fetching headlines from: {url}")
+        df = fetch_express_headlines(url)
+    else:  # guardian
+        logger.info(
+            f"Fetching headlines from Guardian with search term: {search_term}"
+        )
+        df = fetch_guardian_headlines(
+            url=None, search_term=search_term, max_pages=limit or 10
+        )
+
+    return _normalize_columns(df, source=mode)
+
+
+def save_dataset(df: pd.DataFrame, output_path: str) -> None:
+    """Export DataFrame to CSV with unified schema."""
+    df.to_csv(output_path, index=False)
+    logger.info(f"Dataset saved to {output_path}")
 
 
 def main() -> None:
     """CLI entry point."""
     import argparse
 
-    BASE_URL = "https://trinidadexpress.com/search/?t=article&sd=desc"
-    DEFAULT_ARTICLES_NUM = 10
-
     parser = argparse.ArgumentParser(
-        description="Scrape Trinidad Express news headlines"
+        description="Scrape Trinidad news headlines from Express or Guardian",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "limit",
+        "--mode",
+        choices=["express", "guardian"],
+        default="express",
+        help="Data source mode (default: express)",
+    )
+    parser.add_argument(
+        "--limit",
+        type=int,
         nargs="?",
-        default=DEFAULT_ARTICLES_NUM,
-        help="number of articles to scrape (default: latest 10 articles)",
+        const=10,
+        metavar="N",
+        help=f"Number of articles/pages to fetch (default: 10)",
+    )
+    parser.add_argument(
+        "--search-term",
+        type=str,
+        default=None,
+        metavar="KEYWORD",
+        help='Search keyword for Guardian mode (e.g., "politics")',
+    )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="tt_news_headlines.csv",
+        metavar="FILE",
+        help="Output CSV filename (default: tt_news_headlines.csv)",
     )
 
     args = parser.parse_args()
 
-    TARGET_URL = f"{BASE_URL}&l={args.limit}&nsa=eedition"
-
-    # Set up logging
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s [%(levelname)s] %(message)s",
+    # Fetch unified dataset using the wrapper function
+    df = _fetch_unified_dataset(
+        mode=args.mode,
+        limit=args.limit,
+        search_term=args.search_term,
     )
 
-    logger.info(f"Fetching headlines from: {TARGET_URL}")
-    df = fetch_express_headlines(TARGET_URL)
-    print(df)
-    df.to_csv("express_headlines.csv", index=False)
-    logger.info("Headlines saved to express_headlines.csv")
+    # Export with unified schema
+    save_dataset(df, args.output)
 
     if df.empty:
         logger.warning("No articles found or all entries were malformed.")
@@ -48,17 +132,18 @@ def main() -> None:
     print(f"Found {len(df)} article(s)")
     print("=" * 80)
 
-    # Display as a nicely formatted table
+    # Display as a nicely formatted table using canonical column names
     if len(df) > 0:
         max_title_len = min(60, max(len(str(row[0])) for row in df.itertuples()))
         max_link_len = min(70, max(len(str(row[1])) for row in df.itertuples()))
 
         print("\n")
-        for idx, (title, link, author, section_type, pub_date, summary) in enumerate(
-            df.itertuples(index=False), 1
-        ):
-            title_display = str(title)[:max_title_len].ljust(max_title_len + 2)
-            link_display = str(link)[:max_link_len] if link else ""
+        title_col = "title"
+        link_col = "url"
+
+        for idx, row in df.iterrows():
+            title_display = str(row[title_col])[:max_title_len].ljust(max_title_len + 2)
+            link_display = str(row[link_col])[:max_link_len] if pd.notna(row[link_col]) else ""
 
             print(f"[{idx}] {title_display} | {link_display}")
 

@@ -10,6 +10,9 @@ from bs4 import BeautifulSoup, Tag
 
 logger = logging.getLogger(__name__)
 
+# Canonical column schema for unified output (must match main.py)
+CANONICAL_COLUMNS = ["title", "url", "author", "date", "summary"]
+
 
 def fetch_express_headlines(url: str) -> pd.DataFrame:
     """Fetch article headlines and metadata from TT Express page.
@@ -105,17 +108,18 @@ def fetch_express_headlines(url: str) -> pd.DataFrame:
         articles,
         columns=[
             "title",
-            "partial_link_to_full_article",
+            "url",
             "author",
             "section_type",
-            "published_date",
-            "article_summary",
+            "date",
+            "summary",
         ],
     )
 
 
-def scrape_guardian_news(
-    url: Optional[str] = "https://www.guardian.co.tt/news-6.12.0.4f1749cb44",
+def fetch_guardian_headlines(
+    url: Optional[str] = None,
+    search_term: Optional[str] = None,
     max_pages: int = 10,
 ) -> pd.DataFrame:
     """Scrape Trinidad Guardian news headlines and descriptions.
@@ -130,18 +134,51 @@ def scrape_guardian_news(
     Returns:
         pandas.DataFrame with columns: url, headline, description, author, date
     """
+    # Construct URL if search_term is provided without a base URL
+    if search_term and not url:
+        url = f"https://www.guardian.co.tt/?search_content={urllib.parse.quote(search_term)}"
+    elif not url:
+        url = "https://www.guardian.co.tt/news-6.12.0.4f1749cb44"
+
     # Fetch page with proper headers to avoid bot detection
-    req = urllib.request.Request(
+    import time
+
+    time.sleep(1)  # Polite delay between requests
+
+    response = requests.get(
         url,
         headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            ),
         },
+        timeout=30,
     )
 
-    with urllib.request.urlopen(req, timeout=20) as response:
-        html = response.read().decode("utf-8")
+    if not response.ok:
+        logger.error(
+            f"Failed to fetch Guardian page {url}: HTTP {response.status_code}"
+        )
+        raise requests.HTTPError(
+            f"Guardian returned {response.status_code}", response=response
+        )
 
-    soup = BeautifulSoup(html, "html.parser")
+    try:
+        # Use response.text directly (requests handles decoding for us)
+        html_content = (response.text or "").strip()
+        if not html_content:
+            logger.warning(f"Empty response from Guardian page {url}")
+            return pd.DataFrame(columns=CANONICAL_COLUMNS)
+
+        # Debug output
+        print(f"[DEBUG] HTML length: {len(html_content)}")
+        print(f"[DEBUG] First 200 chars: {html_content[:200]}")
+
+        soup = BeautifulSoup(html_content, "html.parser")
+    except Exception as e:
+        logger.error(f"Failed to parse HTML for {url}: {e}")
+        return pd.DataFrame(columns=CANONICAL_COLUMNS)
 
     articles = []
 
@@ -209,8 +246,8 @@ def scrape_guardian_news(
                 }
             )
 
-    # If this is a search result page with pagination links, fetch all pages
-    if url and soup.find(class_=lambda x: x and "ag_page_navigation" in str(x)):
+    # Only use pagination for search result URLs (those with query params), not homepage
+    if url and "?" in url and soup.find(class_=lambda x: x and "ag_page_navigation" in str(x)):
         articles = scrape_all_guardian_pages(url, max_pages)
 
     # Convert URLs to absolute format for consistency
@@ -222,6 +259,17 @@ def scrape_guardian_news(
             for url in df["url"]
         ]
 
+    # Rename columns to canonical schema before returning
+    return _rename_guardian_columns(df)
+
+
+def _rename_guardian_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename Guardian-specific column names to canonical schema."""
+    col_map = {
+        "headline": "title",
+        "description": "summary",
+    }
+    df.rename(columns=col_map, inplace=True)
     return df
 
 
@@ -250,15 +298,28 @@ def scrape_all_guardian_pages(base_url: str, max_pages: int = 10) -> list[dict]:
         visited_urls.add(current_url)
 
         try:
-            req = urllib.request.Request(
+            import time
+
+            time.sleep(1)  # Polite delay between pagination requests
+
+            response = requests.get(
                 current_url,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                    "User-Agent": (
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                    ),
                 },
+                timeout=30,
             )
 
-            with urllib.request.urlopen(req, timeout=20) as response:
-                html = response.read().decode("utf-8")
+            if not response.ok:
+                logger.error(
+                    f"Failed to fetch Guardian page {current_url}: HTTP {response.status_code}"
+                )
+                continue
+
+            html = (response.text or "").strip()
 
             soup = BeautifulSoup(html, "html.parser")
 
@@ -305,15 +366,29 @@ def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFra
     articles = []
 
     try:
-        req = urllib.request.Request(
+        import time
+
+        time.sleep(1)  # Polite delay between requests
+
+        response = requests.get(
             url,
             headers={
-                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
             },
+            timeout=30,
         )
 
-        with urllib.request.urlopen(req, timeout=20) as response:
-            html = response.read().decode("utf-8")
+        if not response.ok:
+            logger.error(
+                f"Failed to fetch Guardian page {url}: HTTP {response.status_code}"
+            )
+            return pd.DataFrame(
+                columns=["url", "headline", "description", "author", "date"]
+            )
+        html = (response.text or "").strip()
 
         soup = BeautifulSoup(html, "html.parser")
 
@@ -393,4 +468,5 @@ def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFra
             for url in df["url"]
         ]
 
-    return df
+    # Rename columns to canonical schema before returning
+    return _rename_guardian_columns(df)
