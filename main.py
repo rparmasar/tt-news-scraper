@@ -1,4 +1,4 @@
-"""Trinidad & Tobago News Scraper - Fetches headlines from Trinidad Express and Guardian."""
+"""Trinidad & Tobago News Scraper - Fetches headlines from Trinidad Express and Guardian by source."""
 
 import logging
 from typing import Optional
@@ -30,12 +30,12 @@ def _normalize_columns(df: pd.DataFrame, source: str) -> pd.DataFrame:
 
 
 def _fetch_unified_dataset(
-    mode: str, limit: Optional[int] = None, search_term: Optional[str] = None
+    source: str, limit: Optional[int] = None, search_term: Optional[str] = None
 ) -> pd.DataFrame:
     """Unified entry point for fetching headlines from any supported source."""
     BASE_URL = "https://trinidadexpress.com/search/?t=article&sd=desc"
 
-    if mode == "express":
+    if source == "express":
         url_params = [f"&l={limit or 10}", "&nsa=eedition"]
         if search_term:
             from urllib.parse import quote_plus
@@ -55,7 +55,7 @@ def _fetch_unified_dataset(
     if not df["date"].empty:
         df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%S")
 
-    return _normalize_columns(df, source=mode)
+    return _normalize_columns(df, source=source)
 
 
 def main() -> None:
@@ -63,14 +63,14 @@ def main() -> None:
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="Scrape Trinidad news headlines from Express or Guardian",
+        description="Scrape Trinidad news headlines from Express or Guardian by source",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "--mode",
+        "--source",
         choices=["express", "guardian"],
         default="express",
-        help="Data source mode (default: express)",
+        help="Data source to fetch from (default: express)",
     )
     parser.add_argument(
         "--limit",
@@ -99,7 +99,7 @@ def main() -> None:
 
     # Fetch unified dataset using the wrapper function
     df = _fetch_unified_dataset(
-        mode=args.mode,
+        source=args.source,
         limit=args.limit,
         search_term=args.search_term,
     )
