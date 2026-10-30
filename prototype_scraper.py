@@ -1,6 +1,7 @@
 import urllib.request
-from bs4 import BeautifulSoup
+
 import pandas as pd
+from bs4 import BeautifulSoup
 
 
 def scrape_guardian_news(url=None, max_pages=10):
@@ -101,97 +102,174 @@ def scrape_all_pages(base_url, max_pages=10):
     all_articles = []
     visited_urls = set()
 
-    # Queue contains tuples of (page_url, page_number)
-    queue = [(base_url, 0)]
+    # Fetch initial page to detect pagination structure
+    try:
+        req = urllib.request.Request(
+            base_url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+        )
 
-    while queue and len(all_articles) < max_pages * 15:  # ~15 articles per page
-        current_url, _ = queue.pop(0)
+        with urllib.request.urlopen(req, timeout=20) as response:
+            html = response.read().decode("utf-8")
 
-        if current_url in visited_urls:
-            continue
-        visited_urls.add(current_url)
+        soup = BeautifulSoup(html, "html.parser")
 
-        try:
-            req = urllib.request.Request(
-                current_url,
-                headers={
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-                },
-            )
-
-            with urllib.request.urlopen(req, timeout=20) as response:
-                html = response.read().decode("utf-8")
-
-            soup = BeautifulSoup(html, "html.parser")
-
-            # Find pagination links and add new pages to queue
-            for nav_elem in soup.find_all(class_=lambda x: x and "ag_page_navigation" in str(x)):
-                for a in nav_elem.find_all("a", href=True):
-                    link_text = a.get_text(strip=True)
-                    if any(c.isdigit() for c in link_text) and len(link_text) > 1:
-                        new_url = urllib.parse.urljoin(current_url, a["href"])
-                        if new_url not in visited_urls:
-                            queue.append((new_url, int(link_text)))
-
-            # Scrape articles from current page
-            for container in soup.find_all(class_=lambda x: x and "_LIST" in str(x)):
-                if "sponsored-list" in str(container.get("class", [])):
-                    continue
-
-                for link in container.find_all("a", href=True):
-                    headline_elem = link.find("h1", class_="headline")
-
-                    if not headline_elem:
+        # Find the last page number in pagination bar
+        last_page_num = 1
+        for nav_elem in soup.find_all(class_=lambda x: x and "ag_page_navigation" in str(x)):
+            for a in nav_elem.find_all("a", href=True):
+                link_text = a.get_text(strip=True)
+                if any(c.isdigit() for c in link_text) and len(link_text) > 1:
+                    try:
+                        page_num = int(link_text)
+                        last_page_num = max(last_page_num, page_num)
+                    except ValueError:
                         continue
 
-                    headline = headline_elem.get_text(strip=True)
-                    link_text = link.get_text(strip=True)
+        # Scrape initial page (page 1)
+        all_articles.extend(_scrape_single_page(base_url, visited_urls))
 
-                    # Skip pagination links and short/numeric text
-                    if (
-                        len(headline) < 20
-                        or headline.isdigit()
-                        or "→" in link_text
-                        or "»" in link_text
-                    ):
-                        continue
+        # Fetch remaining pages iteratively using for loop
+        if last_page_num > 1 and max_pages >= last_page_num:
+            for page in range(2, min(max_pages + 1, last_page_num + 1)):
+                # Guardian pagination pattern: /search-6.14.0.3.XX.YYYY...
+                # The 4th segment (index 3) is the page number
+                parsed = urllib.parse.urlparse(base_url)
+                path_parts = parsed.path.split("/")
+                
+                if len(path_parts) >= 5:
+                    # Replace segment at index 3 with new page number
+                    new_path = "/".join(path_parts[:4] + [str(page)] + path_parts[5:])
+                    page_url = urllib.parse.urlunparse((
+                        parsed.scheme, parsed.netloc, new_path,
+                        parsed.params, parsed.query, parsed.fragment
+                    ))
+                else:
+                    # Fallback for non-search URLs
+                    page_url = f"{base_url}&page={page}"
 
-                    parent_div = link.find_parent("div")
-                    all_text = parent_div.get_text(strip=True) if parent_div else ""
-                    headline_pos = all_text.find(headline)
-                    description = (
-                        all_text[:headline_pos].strip()
-                        if headline_pos > 0
-                        else ""
-                    )
-                    description = " ".join(description.split())
+                if page_url not in visited_urls:
+                    all_articles.extend(_scrape_single_page(page_url, visited_urls))
 
-                    all_articles.append(
-                        {
-                            "url": link["href"],
-                            "headline": headline,
-                            "description": description[:200]
-                            if len(description) > 200
-                            else description,
-                        }
-                    )
-
-        except Exception as e:
-            print(f"Error fetching {current_url}: {e}")
-            continue
+    except Exception as e:
+        print(f"Error during pagination scraping: {e}")
 
     return all_articles
 
 
-if __name__ == "__main__":
-    # Example usage:
-    # Homepage list page: scrape_guardian_news()
-    # Search results: scrape_guardian_news("https://www.guardian.co.tt/search-6.14.0.3.40.dd56412694?search_content=longdenville")
+def _scrape_single_page(url, visited_urls):
+    """Scrape articles from a single page.
 
-    df = scrape_guardian_news(
-        "https://www.guardian.co.tt/search-6.14.0.3.1.1478c24e3f?search_content=longdenville"
-    )
-    print(f"Scraped {len(df)} articles from: {df['url'].iloc[0]}")
-    # print("\nFirst 5 rows:")
-    # print(df.head())
-    print(df)
+    Args:
+        url: The page URL to scrape
+        visited_urls: Set of already-visited URLs (for deduplication)
+
+    Returns:
+        list of article dicts
+    """
+    articles = []
+
+    try:
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            },
+        )
+
+        with urllib.request.urlopen(req, timeout=20) as response:
+            html = response.read().decode("utf-8")
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Scrape articles from list containers
+        for container in soup.find_all(class_=lambda x: x and "_LIST" in str(x)):
+            if "sponsored-list" in str(container.get("class", [])):
+                continue
+
+            for link in container.find_all("a", href=True):
+                headline_elem = link.find("h1", class_="headline")
+
+                if not headline_elem:
+                    continue
+
+                headline = headline_elem.get_text(strip=True)
+                link_text = link.get_text(strip=True)
+
+                # Skip pagination links and short/numeric text
+                if (
+                    len(headline) < 20
+                    or headline.isdigit()
+                    or "→" in link_text
+                    or "»" in link_text
+                ):
+                    continue
+
+                parent_div = link.find_parent("div")
+                all_text = parent_div.get_text(strip=True) if parent_div else ""
+                headline_pos = all_text.find(headline)
+                description = (
+                    all_text[:headline_pos].strip()
+                    if headline_pos > 0
+                    else ""
+                )
+                description = " ".join(description.split())
+
+                article = {
+                    "url": link["href"],
+                    "headline": headline,
+                    "description": description[:200]
+                    if len(description) > 200
+                    else description,
+                }
+
+                # Only add if URL not already visited (prevents duplicates across pages)
+                if article["url"] not in visited_urls:
+                    articles.append(article)
+                    visited_urls.add(article["url"])
+
+    except Exception as e:
+        print(f"Error scraping {url}: {e}")
+
+    return articles
+
+
+if __name__ == "__main__":
+    import sys
+
+    if len(sys.argv) > 1:
+        search_term = " ".join(sys.argv[1:])
+        url = f"https://www.guardian.co.tt/search-6.14.0.3.40.dd56412694?search_content={search_term}"
+    else:
+        # Default to homepage list page for demo
+        url = None
+
+    print(f"Scraping from: {url or 'Homepage'}")
+    df = scrape_guardian_news(url, max_pages=10)
+
+    if len(df) > 0:
+        print(f"\n✓ Scraped {len(df)} articles\n")
+        print("First 5 rows:")
+        for i, row in df.head(5).iterrows():
+            print(f"{i + 1}. {row['headline']}")
+            print(f"   URL: {row['url'][:70]}...")
+            print(f"   Desc: {row['description'][:80]}...\n")
+
+        # Show sample from later pages if available
+        if len(df) > 15:
+            print("-" * 60)
+            print("Sample from page 3:")
+            for i in range(15, min(20, len(df))):
+                row = df.iloc[i]
+                print(f"{i + 1}. {row['headline']}")
+
+        # Save to CSV (optional)
+        csv_path = (
+            "tt_guardian_articles.csv" if url else "tt_guardian_homepage_articles.csv"
+        )
+        df.to_csv(csv_path, index=False)
+        print(f"\nSaved to: {csv_path}")
+    else:
+        print("No articles found.")

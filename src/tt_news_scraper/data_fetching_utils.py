@@ -9,8 +9,8 @@ from bs4 import BeautifulSoup, Tag
 logger = logging.getLogger(__name__)
 
 
-def fetch_headlines(url: str) -> pd.DataFrame:
-    """Fetch article headlines and metadata from a search results page.
+def fetch_express_headlines(url: str) -> pd.DataFrame:
+    """Fetch article headlines and metadata from TT Express page.
 
     Args:
         url: The Trinidad Express search URL to scrape.
