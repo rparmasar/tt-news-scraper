@@ -10,6 +10,8 @@ from src.tt_news_scraper.data_fetching_utils import (
     fetch_guardian_headlines,
 )
 
+from src.tt_news_scraper.data_saving_utils import save_dataset
+
 logger = logging.getLogger(__name__)
 
 # Canonical column schema for unified output
@@ -18,34 +20,13 @@ CANONICAL_COLUMNS = ["title", "url", "author", "date", "summary"]
 
 def _normalize_columns(df: pd.DataFrame, source: str) -> pd.DataFrame:
     """Rename columns to canonical schema based on source."""
-    df = df.copy()
-
+    # Express column mapping (already uses canonical names from data_fetching_utils)
     if source == "express":
-        # Express column mapping
-        col_map = {
-            "title": "title",
-            "partial_link_to_full_article": "url",
-            "author": "author",
-            "published_date": "date",
-            "article_summary": "summary",
-        }
+        return df.copy()
+
+    # Guardian column mapping (already uses canonical names from _rename_guardian_columns)
     else:  # guardian
-        # Guardian column mapping
-        col_map = {
-            "headline": "title",
-            "url": "url",
-            "author": "author",
-            "date": "date",
-            "description": "summary",
-        }
-
-    df.rename(columns=col_map, inplace=True)
-
-    # Normalize date format to ISO string for consistency
-    if not df["date"].empty:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.isoformat()
-
-    return df
+        return df.copy()
 
 
 def _fetch_unified_dataset(
@@ -66,13 +47,11 @@ def _fetch_unified_dataset(
             url=None, search_term=search_term, max_pages=limit or 10
         )
 
+    # Normalize date format to ISO string for consistency
+    if not df["date"].empty:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%S")
+
     return _normalize_columns(df, source=mode)
-
-
-def save_dataset(df: pd.DataFrame, output_path: str) -> None:
-    """Export DataFrame to CSV with unified schema."""
-    df.to_csv(output_path, index=False)
-    logger.info(f"Dataset saved to {output_path}")
 
 
 def main() -> None:
@@ -95,7 +74,7 @@ def main() -> None:
         nargs="?",
         const=10,
         metavar="N",
-        help=f"Number of articles/pages to fetch (default: 10)",
+        help="Number of articles/pages to fetch (default: 10)",
     )
     parser.add_argument(
         "--search-term",
@@ -143,7 +122,9 @@ def main() -> None:
 
         for idx, row in df.iterrows():
             title_display = str(row[title_col])[:max_title_len].ljust(max_title_len + 2)
-            link_display = str(row[link_col])[:max_link_len] if pd.notna(row[link_col]) else ""
+            link_display = (
+                str(row[link_col])[:max_link_len] if pd.notna(row[link_col]) else ""
+            )
 
             print(f"[{idx}] {title_display} | {link_display}")
 
