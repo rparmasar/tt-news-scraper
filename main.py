@@ -37,6 +37,8 @@ def main() -> None:
     logger.info(f"Fetching headlines from: {TARGET_URL}")
     df = fetch_express_headlines(TARGET_URL)
     print(df)
+    df.to_csv("express_headlines.csv", index=False)
+    logger.info("Headlines saved to express_headlines.csv")
 
     if df.empty:
         logger.warning("No articles found or all entries were malformed.")
