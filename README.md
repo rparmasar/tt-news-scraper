@@ -1,6 +1,6 @@
 # Trinidad & Tobago News Scraper
 
-A simple web scraper for fetching news headlines and descriptions from Trinidad Express.
+A CLI tool for fetching news headlines and metadata from Trinidad Express and Guardian.
 
 ## Usage
 
@@ -8,17 +8,29 @@ A simple web scraper for fetching news headlines and descriptions from Trinidad 
 # Install dependencies
 uv sync  # or: pip install -e .
 
-# Scrape latest articles (default)
+# Default (Express, latest articles)
 python -m tt_news_scraper
 
-# Custom URL
-python -m tt_news_scraper "https://trinidadexpress.com/search/?t=article&sd=desc&l=20&nsa=eedition"
+# Express with search query
+python -m tt_news_scraper --source express --search-term "politics" --limit 20
+
+# Guardian with search term
+python -m tt_news_scraper --source guardian --search-term "economy" --limit 15
+
+# Custom output file
+python -m tt_news_scraper --output news_headlines.csv
 ```
+
+## Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--source {express,guardian}` | Data source to fetch from | express |
+| `--limit [N]` | Number of articles/pages to fetch | 10 |
+| `--search-term KEYWORD` | Search keyword for Express (q param) or Guardian | None |
+| `--output FILE` | Output CSV filename | tt_news_headlines.csv |
 
 ## Output
 
-Displays a formatted console table with:
-- Article title (left-aligned)
-- Description/snippet (right side)
-
-Skipped/malformed entries are logged to stderr.
+- Console: Formatted table showing index, title, and URL per article
+- File: Unified CSV with columns `url`, `title`, `summary`, `author`, `date`
