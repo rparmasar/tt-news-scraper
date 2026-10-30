@@ -49,7 +49,7 @@ def fetch_express_headlines(url: str) -> pd.DataFrame:
         if not headline_link:
             continue
 
-        title_tag: Optional[Tag] = headline_link.find_parent("h3") or headline_link
+        title_tag: Tag | None = headline_link.find_parent("h3") or headline_link
 
         title = (title_tag.get_text(strip=True) or "").strip()
         if not title:
@@ -111,8 +111,8 @@ def fetch_express_headlines(url: str) -> pd.DataFrame:
 
 
 def fetch_guardian_headlines(
-    url: Optional[str] = None,
-    search_term: Optional[str] = None,
+    url: str | None = None,
+    search_term: str | None = None,
     max_pages: int = 10,
 ) -> pd.DataFrame:
     """Scrape Trinidad Guardian news headlines and descriptions.
@@ -150,9 +150,8 @@ def fetch_guardian_headlines(
     )
 
     if not response.ok:
-        logger.warning(
-            f"Got HTTP {response.status_code} for {url}, retrying in 2s..."
-        )
+        logger.warning(f"Got HTTP {response.status_code} for {url}, retrying in 2s...")
+
         time.sleep(2)
         response = requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, timeout=30)
 
@@ -247,7 +246,11 @@ def fetch_guardian_headlines(
             )
 
     # Only use pagination for search result URLs (those with query params), not homepage
-    if url and "?" in url and soup.find(class_=lambda x: x and "ag_page_navigation" in str(x)):
+    if (
+        url
+        and "?" in url
+        and soup.find(class_=lambda x: x and "ag_page_navigation" in str(x))
+    ):
         articles = scrape_all_guardian_pages(url, max_pages)
 
     # Convert URLs to absolute format for consistency

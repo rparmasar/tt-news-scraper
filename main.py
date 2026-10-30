@@ -9,7 +9,6 @@ from src.tt_news_scraper.data_fetching_utils import (
     fetch_express_headlines,
     fetch_guardian_headlines,
 )
-
 from src.tt_news_scraper.data_saving_utils import save_dataset
 
 logger = logging.getLogger(__name__)
@@ -30,7 +29,7 @@ def _normalize_columns(df: pd.DataFrame, source: str) -> pd.DataFrame:
 
 
 def _fetch_unified_dataset(
-    source: str, limit: Optional[int] = None, search_term: Optional[str] = None
+    source: str, limit: int | None = None, search_term: str | None = None
 ) -> pd.DataFrame:
     """Unified entry point for fetching headlines from any supported source."""
     BASE_URL = "https://trinidadexpress.com/search/?t=article&sd=desc"
@@ -39,21 +38,22 @@ def _fetch_unified_dataset(
         url_params = [f"&l={limit or 10}", "&nsa=eedition"]
         if search_term:
             from urllib.parse import quote_plus
+
             url_params.append(f"&q={quote_plus(search_term)}")
         url = BASE_URL + "".join(url_params)
         logger.info(f"Fetching headlines from: {url}")
         df = fetch_express_headlines(url)
     else:  # guardian
-        logger.info(
-            f"Fetching headlines from Guardian with search term: {search_term}"
-        )
+        logger.info(f"Fetching headlines from Guardian with search term: {search_term}")
         df = fetch_guardian_headlines(
             url=None, search_term=search_term, max_pages=limit or 10
         )
 
     # Normalize date format to ISO string for consistency
     if not df["date"].empty:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.strftime("%Y-%m-%dT%H:%M:%S")
+        df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
 
     return _normalize_columns(df, source=source)
 
@@ -122,7 +122,9 @@ def main() -> None:
         for idx, row in df.iterrows():
             title = str(row["title"])[:60] if pd.notna(row["title"]) else ""
             link = (
-                str(row["url"])[:70] if pd.notna(row["url"]) and len(str(row["url"])) > 0 else ""
+                str(row["url"])[:70]
+                if pd.notna(row["url"]) and len(str(row["url"])) > 0
+                else ""
             )
 
             print(f"[{idx}] {title} | {link}")

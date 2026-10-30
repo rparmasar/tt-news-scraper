@@ -11,7 +11,8 @@ dependencies = [
 ]
 [tool.ruff.lint]
 ignore = [
-    "FA100"
+    "FA100",
+    "UP045"
 ]
 
 [build-system]
