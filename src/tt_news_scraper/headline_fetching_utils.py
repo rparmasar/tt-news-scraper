@@ -1,8 +1,6 @@
 import logging
 import urllib.parse
-import urllib.request
 from datetime import datetime
-from typing import Optional
 
 import pandas as pd
 import requests

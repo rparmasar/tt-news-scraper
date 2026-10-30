@@ -34,7 +34,7 @@ def save_dataset_with_metadata(
     if metadata is not None and len(metadata) > 0:
         meta_df = pd.DataFrame([metadata])
         df_with_meta = pd.concat(
-            [meta_df.rename(columns={c: f"_meta_{c}" for c in metadata.keys()}), df],
+            [meta_df.rename(columns={c: f"_meta_{c}" for c in metadata}), df],
             axis=1,
         )
     else:

@@ -5,11 +5,11 @@ from typing import Optional
 
 import pandas as pd
 
-from src.tt_news_scraper.data_fetching_utils import (
+from src.tt_news_scraper.data_saving_utils import save_dataset
+from tt_news_scraper.headline_fetching_utils import (
     fetch_express_headlines,
     fetch_guardian_headlines,
 )
-from src.tt_news_scraper.data_saving_utils import save_dataset
 
 logger = logging.getLogger(__name__)
 
