@@ -2,7 +2,6 @@ import sys
 
 from src.tt_news_scraper.data_fetching_utils import scrape_guardian_news
 
-
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         search_term = " ".join(sys.argv[1:])

@@ -1,4 +1,6 @@
 import logging
+import urllib.parse
+import urllib.request
 from datetime import datetime
 from typing import Optional
 
@@ -112,11 +114,14 @@ def fetch_express_headlines(url: str) -> pd.DataFrame:
     )
 
 
-def scrape_guardian_news(url: Optional[str] = None, max_pages: int = 10) -> pd.DataFrame:
+def scrape_guardian_news(
+    url: Optional[str] = "https://www.guardian.co.tt/news-6.12.0.4f1749cb44",
+    max_pages: int = 10,
+) -> pd.DataFrame:
     """Scrape Trinidad Guardian news headlines and descriptions.
 
     Args:
-        url: Optional URL to scrape. If None, uses the homepage list page.
+        url: Optional URL to scrape. Defaults to the homepage list page.
               Supports both homepage lists and search result pages (e.g.,
               ?search_content=keyword).
         max_pages: Maximum number of pagination pages to fetch for search results.
@@ -125,16 +130,9 @@ def scrape_guardian_news(url: Optional[str] = None, max_pages: int = 10) -> pd.D
     Returns:
         pandas.DataFrame with columns: url, headline, description, author, date
     """
-    import urllib.request
-    from bs4 import BeautifulSoup
-    import urllib.parse
-
-    # Use provided URL or default homepage list page
-    target_url = url if url else "https://www.guardian.co.tt/news-6.12.0.4f1749cb44"
-
     # Fetch page with proper headers to avoid bot detection
     req = urllib.request.Request(
-        target_url,
+        url,
         headers={
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         },
@@ -185,11 +183,12 @@ def scrape_guardian_news(url: Optional[str] = None, max_pages: int = 10) -> pd.D
 
             # Extract author (pattern: "byAuthorName" after headline)
             import re
-            author_match = re.search(r'\bby(\S+)', all_text, re.IGNORECASE)
+
+            author_match = re.search(r"\bby(\S+)", all_text, re.IGNORECASE)
             author = author_match.group(1).strip() if author_match else ""
 
             # Extract timestamp (format: YYYYMMDDHHMMSS at end of metadata section)
-            timestamp_match = re.search(r'(\d{14})\b', all_text)
+            timestamp_match = re.search(r"(\d{14})\b", all_text)
             article_date = pd.NaT
             if timestamp_match and len(timestamp_match.group(1)) == 14:
                 try:
@@ -212,19 +211,21 @@ def scrape_guardian_news(url: Optional[str] = None, max_pages: int = 10) -> pd.D
 
     # If this is a search result page with pagination links, fetch all pages
     if url and soup.find(class_=lambda x: x and "ag_page_navigation" in str(x)):
-        articles = scrape_all_pages(url, max_pages)
+        articles = scrape_all_guardian_pages(url, max_pages)
 
     # Convert URLs to absolute format for consistency
     base_domain = "https://www.guardian.co.tt"
     df = pd.DataFrame(articles).copy()
     if not df.empty:
-        df["url"] = [base_domain + url if not url.startswith("http") else url 
-                     for url in df["url"]]
+        df["url"] = [
+            base_domain + url if not url.startswith("http") else url
+            for url in df["url"]
+        ]
 
     return df
 
 
-def scrape_all_pages(base_url: str, max_pages: int = 10) -> list[dict]:
+def scrape_all_guardian_pages(base_url: str, max_pages: int = 10) -> list[dict]:
     """Fetch all pagination pages for a search result URL.
 
     Uses iterative link-following instead of URL construction to handle
@@ -237,10 +238,6 @@ def scrape_all_pages(base_url: str, max_pages: int = 10) -> list[dict]:
     Returns:
         list of article dicts from all pages
     """
-    import urllib.request
-    from bs4 import BeautifulSoup
-    import urllib.parse
-
     all_articles = []
     visited_urls = set()
     page_queue = [base_url]  # Queue for iterative BFS-style traversal
@@ -266,11 +263,13 @@ def scrape_all_pages(base_url: str, max_pages: int = 10) -> list[dict]:
             soup = BeautifulSoup(html, "html.parser")
 
             # Scrape articles from current page and extend the list
-            scraped_df = _scrape_single_page(current_url, visited_urls)
+            scraped_df = _scrape_single_guardian_page(current_url, visited_urls)
             all_articles.extend(scraped_df.to_dict(orient="records"))
 
             # Extract pagination links and add new pages to queue
-            for nav_elem in soup.find_all(class_=lambda x: x and "ag_page_navigation" in str(x)):
+            for nav_elem in soup.find_all(
+                class_=lambda x: x and "ag_page_navigation" in str(x)
+            ):
                 for a in nav_elem.find_all("a", href=True):
                     link_text = a.get_text(strip=True)
                     if any(c.isdigit() for c in link_text) and len(link_text) > 1:
@@ -285,13 +284,15 @@ def scrape_all_pages(base_url: str, max_pages: int = 10) -> list[dict]:
     base_domain = "https://www.guardian.co.tt"
     df = pd.DataFrame(all_articles).copy()
     if not df.empty:
-        df["url"] = [base_domain + url if not url.startswith("http") else url 
-                     for url in df["url"]]
+        df["url"] = [
+            base_domain + url if not url.startswith("http") else url
+            for url in df["url"]
+        ]
 
     return df
 
 
-def _scrape_single_page(url: str, visited_urls: set[str]) -> pd.DataFrame:
+def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFrame:
     """Scrape articles from a single page.
 
     Args:
@@ -301,9 +302,6 @@ def _scrape_single_page(url: str, visited_urls: set[str]) -> pd.DataFrame:
     Returns:
         list of article dicts
     """
-    import urllib.request
-    from bs4 import BeautifulSoup
-
     articles = []
 
     try:
@@ -346,21 +344,20 @@ def _scrape_single_page(url: str, visited_urls: set[str]) -> pd.DataFrame:
                 all_text = parent_div.get_text(strip=True) if parent_div else ""
                 headline_pos = all_text.find(headline)
                 description = (
-                    all_text[:headline_pos].strip()
-                    if headline_pos > 0
-                    else ""
+                    all_text[:headline_pos].strip() if headline_pos > 0 else ""
                 )
                 description = " ".join(description.split())
 
                 # Extract author and date from metadata section
                 import re
+
                 parent_div = link.find_parent("div")
                 all_text = parent_div.get_text(strip=True) if parent_div else ""
 
-                author_match = re.search(r'\bby\s+(\S+)', all_text, re.IGNORECASE)
+                author_match = re.search(r"\bby\s+(\S+)", all_text, re.IGNORECASE)
                 author = author_match.group(1).strip() if author_match else ""
 
-                timestamp_match = re.search(r'(\d{14})\b', all_text)
+                timestamp_match = re.search(r"(\d{14})\b", all_text)
                 article_date = pd.NaT
                 if timestamp_match and len(timestamp_match.group(1)) == 14:
                     try:
@@ -391,7 +388,9 @@ def _scrape_single_page(url: str, visited_urls: set[str]) -> pd.DataFrame:
     base_domain = "https://www.guardian.co.tt"
     df = pd.DataFrame(articles).copy()
     if not df.empty:
-        df["url"] = [base_domain + url if not url.startswith("http") else url 
-                     for url in df["url"]]
+        df["url"] = [
+            base_domain + url if not url.startswith("http") else url
+            for url in df["url"]
+        ]
 
     return df
