@@ -13,17 +13,6 @@ logger = logging.getLogger(__name__)
 CANONICAL_COLUMNS = ["title", "url", "author", "date", "summary"]
 
 
-def _normalize_columns(df: pd.DataFrame, source: str) -> pd.DataFrame:
-    """Rename columns to canonical schema based on source."""
-    # Express column mapping (already uses canonical names from data_fetching_utils)
-    if source == "express":
-        return df.copy()
-
-    # Guardian column mapping (already uses canonical names from _rename_guardian_columns)
-    else:  # guardian
-        return df.copy()
-
-
 def fetch_unified_dataset(
     source: str, limit: int | None = None, search_term: str | None = None
 ) -> pd.DataFrame:
@@ -51,4 +40,4 @@ def fetch_unified_dataset(
             "%Y-%m-%dT%H:%M:%S"
         )
 
-    return _normalize_columns(df, source=source)
+    return df

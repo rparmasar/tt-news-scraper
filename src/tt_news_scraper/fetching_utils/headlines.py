@@ -83,10 +83,11 @@ def fetch_express_headlines(url: str) -> pd.DataFrame:
         lead_p = card.select_one(".card-lead p.tnt-summary")
         article_summary = lead_p.get_text(strip=True) if lead_p else ""
 
+        base_domain = "https://trinidadexpress.com"
         articles.append(
             {
                 "title": title,
-                "url": partial_link,
+                "url": base_domain + partial_link,
                 "author": author,
                 "section_type": section_type,
                 "date": published_date,
