@@ -36,7 +36,11 @@ def _fetch_unified_dataset(
     BASE_URL = "https://trinidadexpress.com/search/?t=article&sd=desc"
 
     if mode == "express":
-        url = f"{BASE_URL}&l={limit or 10}&nsa=eedition"
+        url_params = [f"&l={limit or 10}", "&nsa=eedition"]
+        if search_term:
+            from urllib.parse import quote_plus
+            url_params.append(f"&q={quote_plus(search_term)}")
+        url = BASE_URL + "".join(url_params)
         logger.info(f"Fetching headlines from: {url}")
         df = fetch_express_headlines(url)
     else:  # guardian
@@ -81,7 +85,7 @@ def main() -> None:
         type=str,
         default=None,
         metavar="KEYWORD",
-        help='Search keyword for Guardian mode (e.g., "politics")',
+        help='Search keyword for Express (q param) or Guardian mode (e.g., "politics")',
     )
     parser.add_argument(
         "--output",
