@@ -113,20 +113,15 @@ def main() -> None:
 
     # Display as a nicely formatted table using canonical column names
     if len(df) > 0:
-        max_title_len = min(60, max(len(str(row[0])) for row in df.itertuples()))
-        max_link_len = min(70, max(len(str(row[1])) for row in df.itertuples()))
-
         print("\n")
-        title_col = "title"
-        link_col = "url"
 
         for idx, row in df.iterrows():
-            title_display = str(row[title_col])[:max_title_len].ljust(max_title_len + 2)
-            link_display = (
-                str(row[link_col])[:max_link_len] if pd.notna(row[link_col]) else ""
+            title = str(row["title"])[:60] if pd.notna(row["title"]) else ""
+            link = (
+                str(row["url"])[:70] if pd.notna(row["url"]) and len(str(row["url"])) > 0 else ""
             )
 
-            print(f"[{idx}] {title_display} | {link_display}")
+            print(f"[{idx}] {title} | {link}")
 
         print("\n" + "=" * 80)
 
