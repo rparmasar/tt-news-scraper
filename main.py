@@ -11,17 +11,22 @@ def main() -> None:
     """CLI entry point."""
     import argparse
 
+    BASE_URL = "https://trinidadexpress.com/search/?t=article&sd=desc"
+    DEFAULT_ARTICLES_NUM = 10
+
     parser = argparse.ArgumentParser(
         description="Scrape Trinidad Express news headlines"
     )
     parser.add_argument(
-        "url",
+        "limit",
         nargs="?",
-        default="https://trinidadexpress.com/search/?t=article&sd=desc&l=10&nsa=eedition",
-        help="URL to scrape (default: latest 10 articles)",
+        default=DEFAULT_ARTICLES_NUM,
+        help="number of articles to scrape (default: latest 10 articles)",
     )
 
     args = parser.parse_args()
+
+    TARGET_URL = f"{BASE_URL}&l={args.limit}&nsa=eedition"
 
     # Set up logging
     logging.basicConfig(
@@ -29,8 +34,8 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(message)s",
     )
 
-    logger.info(f"Fetching headlines from: {args.url}")
-    df = fetch_express_headlines(args.url)
+    logger.info(f"Fetching headlines from: {TARGET_URL}")
+    df = fetch_express_headlines(TARGET_URL)
     print(df)
 
     if df.empty:
