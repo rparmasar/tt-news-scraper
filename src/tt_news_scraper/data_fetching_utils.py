@@ -88,11 +88,11 @@ def fetch_express_headlines(url: str) -> pd.DataFrame:
         articles.append(
             {
                 "title": title,
-                "partial_link_to_full_article": partial_link,
+                "url": partial_link,
                 "author": author,
                 "section_type": section_type,
-                "published_date": published_date,
-                "article_summary": article_summary,
+                "date": published_date,
+                "summary": article_summary,
             }
         )
 
@@ -106,14 +106,7 @@ def fetch_express_headlines(url: str) -> pd.DataFrame:
 
     return pd.DataFrame(
         articles,
-        columns=[
-            "title",
-            "url",
-            "author",
-            "section_type",
-            "date",
-            "summary",
-        ],
+        columns=["url", "title", "summary", "author", "date"],
     )
 
 
