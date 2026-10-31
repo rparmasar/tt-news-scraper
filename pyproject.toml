@@ -1,7 +1,7 @@
 [project]
 name = "tt-news-scraper"
-version = "0.4.1"
-description = "Trinidad and Tobago news scraper using Guardian TT as source"
+version = "0.4.2"
+description = "Trinidad and Tobago news scraper using Guardian & Express as sources"
 requires-python = ">=3.12"
 
 dependencies = [
