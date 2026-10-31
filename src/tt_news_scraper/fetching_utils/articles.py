@@ -5,6 +5,8 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
+from tt_news_scraper.progress import FetchingProgress
+
 logger = logging.getLogger(__name__)
 
 # Base domain for URL normalization
@@ -31,51 +33,68 @@ def fetch_express_article_content(urls: Iterable[str]) -> pd.DataFrame:
     else:
         url_list = [urls] if urls else []
 
-    for url in url_list:
-        if not url:
-            continue
+    # Add progress tracking for batch fetching
+    total_urls = len(url_list)
+    with FetchingProgress(
+        description=f"Fetching Express content ({total_urls} URLs)",
+        total=total_urls,
+    ) as progress:
+        for url in url_list:
+            task_id = progress.add_task(f"{url[:50]}...", total=1)
 
-        logger.debug(f"Fetching Express article: {url}")
-
-        try:
-            response = requests.get(
-                url,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                    ),
-                },
-                timeout=30,
-            )
-
-            if not response.ok:
-                logger.warning(f"Failed to fetch Express article {url}: HTTP {response.status_code}")
+            if not url:
+                progress.update(task_id, advance=1)
                 continue
 
-            soup = BeautifulSoup(response.text, "html.parser")
+            logger.debug(f"Fetching Express article: {url}")
 
-            # Extract article content from main article body
-            # TT Express uses .tnt-article-content or similar selectors
-            content_divs = soup.select(".tnt-article-content, .article-body, article p")
-            if not content_divs:
-                logger.debug(f"No content found in Express article {url}")
-                continue
+            try:
+                response = requests.get(
+                    url,
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        ),
+                    },
+                    timeout=30,
+                )
 
-            # Join all paragraphs into a single content string
-            content_parts = [div.get_text(strip=True) for div in content_divs]
-            content = "\n".join(content_parts).strip()
+                if not response.ok:
+                    logger.warning(f"Failed to fetch Express article {url}: HTTP {response.status_code}")
+                    progress.update(task_id, advance=1)
+                    continue
 
-            if not content:
-                logger.debug(f"Empty content extracted from Express article {url}")
-                continue
+                soup = BeautifulSoup(response.text, "html.parser")
 
-            articles.append({"url": url, "content": content})
+                # Extract article content from main article body
+                # TT Express uses .tnt-article-content or similar selectors
+                content_divs = soup.select(".tnt-article-content, .article-body, article p")
+                if not content_divs:
+                    logger.debug(f"No content found in Express article {url}")
+                    progress.update(task_id, advance=1)
+                    continue
 
-        except requests.RequestException as e:
-            logger.error(f"Request failed for Express article {url}: {e}")
-        except Exception as e:
-            logger.error(f"Error processing Express article {url}: {e}")
+                # Join all paragraphs into a single content string
+                content_parts = [div.get_text(strip=True) for div in content_divs]
+                content = "\n".join(content_parts).strip()
+
+                if not content:
+                    logger.debug(f"Empty content extracted from Express article {url}")
+                    progress.update(task_id, advance=1)
+                    continue
+
+                articles.append({"url": url, "content": content})
+
+            except requests.RequestException as e:
+                logger.error(f"Request failed for Express article {url}: {e}")
+            except Exception as e:
+                logger.error(f"Error processing Express article {url}: {e}")
+
+        # Mark all tasks as complete
+        if url_list:
+            for task_id in progress.tasks.values():
+                progress.finish_task(task_id)
 
     if not articles:
         logger.warning("No articles were successfully fetched from Express.")
@@ -100,51 +119,68 @@ def fetch_guardian_article_content(urls: Iterable[str]) -> pd.DataFrame:
     else:
         url_list = [urls] if urls else []
 
-    for url in url_list:
-        if not url:
-            continue
+    # Add progress tracking for batch fetching
+    total_urls = len(url_list)
+    with FetchingProgress(
+        description=f"Fetching Guardian content ({total_urls} URLs)",
+        total=total_urls,
+    ) as progress:
+        for url in url_list:
+            task_id = progress.add_task(f"{url[:50]}...", total=1)
 
-        logger.debug(f"Fetching Guardian article: {url}")
-
-        try:
-            response = requests.get(
-                url,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                    ),
-                },
-                timeout=30,
-            )
-
-            if not response.ok:
-                logger.warning(f"Failed to fetch Guardian article {url}: HTTP {response.status_code}")
+            if not url:
+                progress.update(task_id, advance=1)
                 continue
 
-            soup = BeautifulSoup(response.text, "html.parser")
+            logger.debug(f"Fetching Guardian article: {url}")
 
-            # Extract article content from main body
-            # Guardian uses .article-body or similar selectors
-            content_divs = soup.select(".article-body p, .story-content p, article p")
-            if not content_divs:
-                logger.debug(f"No content found in Guardian article {url}")
-                continue
+            try:
+                response = requests.get(
+                    url,
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        ),
+                    },
+                    timeout=30,
+                )
 
-            # Join all paragraphs into a single content string
-            content_parts = [div.get_text(strip=True) for div in content_divs]
-            content = "\n".join(content_parts).strip()
+                if not response.ok:
+                    logger.warning(f"Failed to fetch Guardian article {url}: HTTP {response.status_code}")
+                    progress.update(task_id, advance=1)
+                    continue
 
-            if not content:
-                logger.debug(f"Empty content extracted from Guardian article {url}")
-                continue
+                soup = BeautifulSoup(response.text, "html.parser")
 
-            articles.append({"url": url, "content": content})
+                # Extract article content from main body
+                # Guardian uses .article-body or similar selectors
+                content_divs = soup.select(".article-body p, .story-content p, article p")
+                if not content_divs:
+                    logger.debug(f"No content found in Guardian article {url}")
+                    progress.update(task_id, advance=1)
+                    continue
 
-        except requests.RequestException as e:
-            logger.error(f"Request failed for Guardian article {url}: {e}")
-        except Exception as e:
-            logger.error(f"Error processing Guardian article {url}: {e}")
+                # Join all paragraphs into a single content string
+                content_parts = [div.get_text(strip=True) for div in content_divs]
+                content = "\n".join(content_parts).strip()
+
+                if not content:
+                    logger.debug(f"Empty content extracted from Guardian article {url}")
+                    progress.update(task_id, advance=1)
+                    continue
+
+                articles.append({"url": url, "content": content})
+
+            except requests.RequestException as e:
+                logger.error(f"Request failed for Guardian article {url}: {e}")
+            except Exception as e:
+                logger.error(f"Error processing Guardian article {url}: {e}")
+
+        # Mark all tasks as complete
+        if url_list:
+            for task_id in progress.tasks.values():
+                progress.finish_task(task_id)
 
     if not articles:
         logger.warning("No articles were successfully fetched from Guardian.")

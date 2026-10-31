@@ -10,6 +10,7 @@ dependencies = [
     "pytest>=9.2.0",
     "requests>=2.31.0",
     "responses>=0.26.3",
+    "rich>=15.0.0",
 ]
 
 [project.optional-dependencies]

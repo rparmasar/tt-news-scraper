@@ -1,0 +1,9 @@
+2026-10-31 19:07:22 [INFO] Fetching headlines from Express with limit=None, search_term=None
+2026-10-31 19:07:22 [INFO] Dataset saved to tt_news_headlines.csv
+2026-10-31 19:07:32 [INFO] Fetching headlines from Express with limit=None, search_term=None
+2026-10-31 19:07:32 [INFO] Fetching full content for 10 articles...
+2026-10-31 19:07:34 [INFO] Dataset saved to tt_news_headlines.csv
+2026-10-31 19:07:52 [INFO] Fetching headlines from Guardian with search term: None
+2026-10-31 19:07:52 [INFO] Fetching full content for 46 articles...
+2026-10-31 19:07:55 [WARNING] No articles were successfully fetched from Guardian.
+2026-10-31 19:07:55 [INFO] Dataset saved to tt_news_headlines.csv

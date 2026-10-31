@@ -8,6 +8,7 @@ import requests
 from bs4 import BeautifulSoup, Tag
 
 from tt_news_scraper.const import BASE_URLS, CANONICAL_COLUMNS
+from tt_news_scraper.progress import FetchingProgress
 
 logger = logging.getLogger(__name__)
 
@@ -67,58 +68,74 @@ def fetch_express_headlines(
 
     # Apply limit if specified (respect Guardian's pagination-style fetching)
     effective_limit = min(len(article_cards), limit or len(article_cards))
-    for card in article_cards[:effective_limit]:
-        headline_link = card.select_one(".card-headline h3 a")
-        if not headline_link:
-            continue
 
-        title_tag: Tag | None = headline_link.find_parent("h3") or headline_link
+    # Add progress tracking for batch fetching
+    with FetchingProgress(
+        description=f"Extracting Express articles ({effective_limit} cards)",
+        total=effective_limit,
+    ) as progress:
+        for idx, card in enumerate(article_cards[:effective_limit], start=1):
+            task_id = progress.add_task(f"[{idx}/{effective_limit}]...", total=1)
 
-        title = (title_tag.get_text(strip=True) or "").strip()
-        if not title:
-            continue  # Skip entries without a title
+            headline_link = card.select_one(".card-headline h3 a")
+            if not headline_link:
+                progress.update(task_id, advance=1)
+                continue
 
-        # Extract the partial article link from href attribute
-        partial_link = str(headline_link.get("href", "")).strip()
+            title_tag: Tag | None = headline_link.find_parent("h3") or headline_link
 
-        # Only append if we have both title and a valid link
-        if not partial_link:
-            continue  # Skip entries without a link
+            title = (title_tag.get_text(strip=True) or "").strip()
+            if not title:
+                progress.update(task_id, advance=1)
+                continue  # Skip entries without a title
 
-        # Extract author (blank if missing)
-        author_elem = card.select_one(".card-byline span.tnt-byline.asset-byline")
-        author = author_elem.get_text(strip=True) if author_elem else ""
+            # Extract the partial article link from href attribute
+            partial_link = str(headline_link.get("href", "")).strip()
 
-        # Extract section type ("General" if missing, preserve exact text when present)
-        section_elem = card.select_one(".card-label-section a.tnt-section-tag")
-        section_type = section_elem.text.strip() if section_elem else "General"
+            # Only append if we have both title and a valid link
+            if not partial_link:
+                progress.update(task_id, advance=1)
+                continue  # Skip entries without a link
 
-        # Extract published_date (ISO format from datetime attribute)
-        time_tag = card.select_one("time[datetime]")
-        published_date = ""
-        if time_tag and time_tag.has_attr("datetime"):
-            try:
-                dt_str = time_tag["datetime"]
-                parsed_dt = datetime.fromisoformat(dt_str)
-                published_date = parsed_dt.isoformat()
-            except ValueError:
-                pass  # Keep empty on parse failure
+            # Extract author (blank if missing)
+            author_elem = card.select_one(".card-byline span.tnt-byline.asset-byline")
+            author = author_elem.get_text(strip=True) if author_elem else ""
 
-        # Extract article summary (full paragraph, not truncated)
-        lead_p = card.select_one(".card-lead p.tnt-summary")
-        article_summary = lead_p.get_text(strip=True) if lead_p else ""
+            # Extract section type ("General" if missing, preserve exact text when present)
+            section_elem = card.select_one(".card-label-section a.tnt-section-tag")
+            section_type = section_elem.text.strip() if section_elem else "General"
 
-        base_domain = "https://trinidadexpress.com"
-        articles.append(
-            {
-                "title": title,
-                "url": base_domain + partial_link,
-                "author": author,
-                "section_type": section_type,
-                "date": published_date,
-                "summary": article_summary,
-            }
-        )
+            # Extract published_date (ISO format from datetime attribute)
+            time_tag = card.select_one("time[datetime]")
+            published_date = ""
+            if time_tag and time_tag.has_attr("datetime"):
+                try:
+                    dt_str = time_tag["datetime"]
+                    parsed_dt = datetime.fromisoformat(dt_str)
+                    published_date = parsed_dt.isoformat()
+                except ValueError:
+                    pass  # Keep empty on parse failure
+
+            # Extract article summary (full paragraph, not truncated)
+            lead_p = card.select_one(".card-lead p.tnt-summary")
+            article_summary = lead_p.get_text(strip=True) if lead_p else ""
+
+            base_domain = "https://trinidadexpress.com"
+            articles.append(
+                {
+                    "title": title,
+                    "url": base_domain + partial_link,
+                    "author": author,
+                    "section_type": section_type,
+                    "date": published_date,
+                    "summary": article_summary,
+                }
+            )
+
+        # Mark all tasks as complete
+        if effective_limit > 0:
+            for task_id in progress.tasks.values():
+                progress.finish_task(task_id)
 
     # Log skipped entries
     total_cards = len(article_cards)
@@ -215,68 +232,81 @@ def fetch_guardian_headlines(
     articles = []
 
     # Find all list containers (contain article links)
-    for container in soup.find_all(class_=lambda x: x and "_LIST" in str(x)):
-        # Skip sponsored content
-        if "sponsored-list" in str(container.get("class", [])):
-            continue
+    with FetchingProgress(
+        description=f"Scraping Guardian page {url}",
+        total=len(soup.find_all(class_=lambda x: x and "_LIST" in str(x))),
+    ) as progress:
+        for container_idx, container in enumerate(
+            soup.find_all(class_=lambda x: x and "_LIST" in str(x)), start=1
+        ):
+            task_id = progress.add_task(f"[{container_idx}]...", total=1)
 
-        for link in container.find_all("a", href=True):
-            # Extract headline from h1 inside the anchor
-            headline_elem = link.find("h1", class_="headline")
-
-            if not headline_elem:
+            # Skip sponsored content
+            if "sponsored-list" in str(container.get("class", [])):
+                progress.update(task_id, advance=1)
                 continue
 
-            headline = headline_elem.get_text(strip=True)
+            for link in container.find_all("a", href=True):
+                # Extract headline from h1 inside the anchor
+                headline_elem = link.find("h1", class_="headline")
 
-            # Skip pagination links (short text, numbers/arrows only)
-            link_text = link.get_text(strip=True)
-            if (
-                len(headline) < 20
-                or headline.isdigit()
-                or "→" in link_text
-                or "»" in link_text
-            ):
-                continue
+                if not headline_elem:
+                    progress.update(task_id, advance=1)
+                    continue
 
-            # Get description from text before the headline (author/caption info)
-            parent_div = link.find_parent("div")
-            all_text = parent_div.get_text(strip=True) if parent_div else ""
+                headline = headline_elem.get_text(strip=True)
 
-            # Description is everything between container start and headline
-            headline_pos = all_text.find(headline)
-            description = all_text[:headline_pos].strip() if headline_pos > 0 else ""
+                # Skip pagination links (short text, numbers/arrows only)
+                link_text = link.get_text(strip=True)
+                if (
+                    len(headline) < 20
+                    or headline.isdigit()
+                    or "→" in link_text
+                    or "»" in link_text
+                ):
+                    progress.update(task_id, advance=1)
+                    continue
 
-            # Clean up description (remove extra whitespace, author names in brackets)
-            description = " ".join(description.split())
+                # Get description from text before the headline (author/caption info)
+                parent_div = link.find_parent("div")
+                all_text = parent_div.get_text(strip=True) if parent_div else ""
 
-            # Extract author (pattern: "byAuthorName" after headline)
-            import re
+                # Description is everything between container start and headline
+                headline_pos = all_text.find(headline)
+                description = all_text[:headline_pos].strip() if headline_pos > 0 else ""
 
-            author_match = re.search(r"by(\S+)", all_text, re.IGNORECASE)
-            author = author_match.group(1).strip() if author_match else ""
+                # Clean up description (remove extra whitespace, author names in brackets)
+                description = " ".join(description.split())
 
-            # Extract timestamp (format: YYYYMMDDHHMMSS at end of metadata section)
-            timestamp_match = re.search(r"(\d{14})\b", all_text)
-            article_date = pd.NaT
-            if timestamp_match and len(timestamp_match.group(1)) == 14:
-                try:
-                    dt = datetime.strptime(timestamp_match.group(1), "%Y%m%d%H%M%S")
-                    article_date = dt
-                except ValueError:
-                    pass
+                # Extract author (pattern: "byAuthorName" after headline)
+                import re
 
-            articles.append(
-                {
-                    "url": link["href"],
-                    "headline": headline,
-                    "description": description[:200]
-                    if len(description) > 200
-                    else description,
-                    "author": author,
-                    "date": article_date,
-                }
-            )
+                author_match = re.search(r"by(\S+)", all_text, re.IGNORECASE)
+                author = author_match.group(1).strip() if author_match else ""
+
+                # Extract timestamp (format: YYYYMMDDHHMMSS at end of metadata section)
+                timestamp_match = re.search(r"(\d{14})\b", all_text)
+                article_date = pd.NaT
+                if timestamp_match and len(timestamp_match.group(1)) == 14:
+                    try:
+                        dt = datetime.strptime(timestamp_match.group(1), "%Y%m%d%H%M%S")
+                        article_date = dt
+                    except ValueError:
+                        pass
+
+                articles.append(
+                    {
+                        "url": link["href"],
+                        "headline": headline,
+                        "description": description[:200]
+                        if len(description) > 200
+                        else description,
+                        "author": author,
+                        "date": article_date,
+                    }
+                )
+
+            progress.update(task_id, advance=1)
 
     # Only use pagination for search result URLs (those with query params), not homepage
     if url is not None and isinstance(url, str) and "?" in url:
@@ -323,67 +353,72 @@ def scrape_all_guardian_pages(base_url: str, max_pages: int = 10) -> list[dict]:
     visited_urls = set()
     page_queue = [base_url]  # Queue for iterative BFS-style traversal
 
-    while page_queue and len(all_articles) < max_pages * 20:  # ~20 articles per page
-        current_url = page_queue.pop(0)
+    total_expected = max_pages * 20  # ~20 articles per page
+    with FetchingProgress(
+        description=f"Scraping Guardian pagination ({max_pages} pages)",
+        total=total_expected,
+    ) as progress:
+        while page_queue and len(all_articles) < total_expected:
+            current_url = page_queue.pop(0)
 
-        if current_url in visited_urls:
-            continue
-        visited_urls.add(current_url)
-
-        try:
-            import time
-
-            time.sleep(1)  # Polite delay between pagination requests
-
-            response = requests.get(
-                current_url,
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                        "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                    ),
-                },
-                timeout=30,
-            )
-
-            if not response.ok:
-                logger.error(
-                    f"Failed to fetch Guardian page {current_url}: HTTP {response.status_code}"
-                )
+            if current_url in visited_urls:
                 continue
+            visited_urls.add(current_url)
 
-            html = (response.text or "").strip()
+            task_id = progress.add_task(f"{current_url[:50]}...", total=1)
 
-            soup = BeautifulSoup(html, "html.parser")
+            try:
+                import time
 
-            # Scrape articles from current page and extend the list
-            scraped_df = _scrape_single_guardian_page(current_url, visited_urls)
-            all_articles.extend(scraped_df.to_dict(orient="records"))
+                time.sleep(1)  # Polite delay between pagination requests
 
-            # Extract pagination links and add new pages to queue
-            for nav_elem in soup.find_all(
-                class_=lambda x: x and "ag_page_navigation" in str(x)
-            ):
-                for a in nav_elem.find_all("a", href=True):
-                    link_text = a.get_text(strip=True)
-                    if any(c.isdigit() for c in link_text) and len(link_text) > 1:
-                        new_url = urllib.parse.urljoin(current_url, a["href"])
-                        if new_url not in visited_urls:
-                            page_queue.append(new_url)
+                response = requests.get(
+                    current_url,
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        ),
+                    },
+                    timeout=30,
+                )
 
-        except Exception as e:
-            logger.error(f"Error fetching {current_url}: {e}")
+                if not response.ok:
+                    logger.error(
+                        f"Failed to fetch Guardian page {current_url}: HTTP {response.status_code}"
+                    )
+                    progress.update(task_id, advance=1)
+                    continue
 
-    # Convert URLs to absolute format for consistency
-    base_domain = "https://www.guardian.co.tt"
-    df = pd.DataFrame(all_articles).copy()
-    if not df.empty:
-        df["url"] = [
-            base_domain + url if not url.startswith("http") else url
-            for url in df["url"]
-        ]
+                html = (response.text or "").strip()
 
-    return df
+                soup = BeautifulSoup(html, "html.parser")
+
+                # Scrape articles from current page and extend the list
+                scraped_df = _scrape_single_guardian_page(current_url, visited_urls)
+                all_articles.extend(scraped_df.to_dict(orient="records"))
+
+                # Extract pagination links and add new pages to queue
+                for nav_elem in soup.find_all(
+                    class_=lambda x: x and "ag_page_navigation" in str(x)
+                ):
+                    for a in nav_elem.find_all("a", href=True):
+                        link_text = a.get_text(strip=True)
+                        if any(c.isdigit() for c in link_text) and len(link_text) > 1:
+                            new_url = urllib.parse.urljoin(current_url, a["href"])
+                            if new_url not in visited_urls:
+                                page_queue.append(new_url)
+
+                progress.update(task_id, advance=1)
+
+            except Exception as e:
+                logger.error(f"Error fetching {current_url}: {e}")
+                progress.update(task_id, advance=1)
+
+        # Mark all tasks as complete
+        if page_queue or all_articles:
+            for task_id in progress.tasks.values():
+                progress.finish_task(task_id)
 
 
 def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFrame:
@@ -425,69 +460,84 @@ def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFra
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # Scrape articles from list containers
-        for container in soup.find_all(class_=lambda x: x and "_LIST" in str(x)):
-            if "sponsored-list" in str(container.get("class", [])):
-                continue
+        # Scrape articles from list containers with progress tracking
+        total_containers = len(soup.find_all(class_=lambda x: x and "_LIST" in str(x)))
+        with FetchingProgress(
+            description=f"Scraping Guardian page {url}",
+            total=total_containers,
+        ) as progress:
+            for container_idx, container in enumerate(
+                soup.find_all(class_=lambda x: x and "_LIST" in str(x)), start=1
+            ):
+                task_id = progress.add_task(f"[{container_idx}/{total_containers}]...", total=1)
 
-            for link in container.find_all("a", href=True):
-                headline_elem = link.find("h1", class_="headline")
-
-                if not headline_elem:
+                # Skip sponsored content
+                if "sponsored-list" in str(container.get("class", [])):
+                    progress.update(task_id, advance=1)
                     continue
 
-                headline = headline_elem.get_text(strip=True)
-                link_text = link.get_text(strip=True)
+                for link in container.find_all("a", href=True):
+                    headline_elem = link.find("h1", class_="headline")
 
-                # Skip pagination links and short/numeric text
-                if (
-                    len(headline) < 20
-                    or headline.isdigit()
-                    or "→" in link_text
-                    or "»" in link_text
-                ):
-                    continue
+                    if not headline_elem:
+                        progress.update(task_id, advance=1)
+                        continue
 
-                parent_div = link.find_parent("div")
-                all_text = parent_div.get_text(strip=True) if parent_div else ""
-                headline_pos = all_text.find(headline)
-                description = (
-                    all_text[:headline_pos].strip() if headline_pos > 0 else ""
-                )
-                description = " ".join(description.split())
+                    headline = headline_elem.get_text(strip=True)
+                    link_text = link.get_text(strip=True)
 
-                # Extract author and date from metadata section
-                import re
+                    # Skip pagination links and short/numeric text
+                    if (
+                        len(headline) < 20
+                        or headline.isdigit()
+                        or "→" in link_text
+                        or "»" in link_text
+                    ):
+                        progress.update(task_id, advance=1)
+                        continue
 
-                parent_div = link.find_parent("div")
-                all_text = parent_div.get_text(strip=True) if parent_div else ""
+                    parent_div = link.find_parent("div")
+                    all_text = parent_div.get_text(strip=True) if parent_div else ""
+                    headline_pos = all_text.find(headline)
+                    description = (
+                        all_text[:headline_pos].strip() if headline_pos > 0 else ""
+                    )
+                    description = " ".join(description.split())
 
-                author_match = re.search(r"\bby\s+(\S+)", all_text, re.IGNORECASE)
-                author = author_match.group(1).strip() if author_match else ""
+                    # Extract author and date from metadata section
+                    import re
 
-                timestamp_match = re.search(r"(\d{14})\b", all_text)
-                article_date = pd.NaT
-                if timestamp_match and len(timestamp_match.group(1)) == 14:
-                    try:
-                        dt = datetime.strptime(timestamp_match.group(1), "%Y%m%d%H%M%S")
-                        article_date = dt
-                    except ValueError:
-                        pass
+                    parent_div = link.find_parent("div")
+                    all_text = parent_div.get_text(strip=True) if parent_div else ""
 
-                article = {
-                    "url": link["href"],
-                    "headline": headline,
-                    "description": description[:200]
-                    if len(description) > 200
-                    else description,
-                    "author": author,
-                    "date": article_date,
-                }
+                    author_match = re.search(r"\bby\s+(\S+)", all_text, re.IGNORECASE)
+                    author = author_match.group(1).strip() if author_match else ""
 
-                # Only add if URL not already visited (prevents duplicates across pages)
-                if article["url"] not in visited_urls:
-                    articles.append(article)
-                    visited_urls.add(article["url"])
+                    timestamp_match = re.search(r"(\d{14})\b", all_text)
+                    article_date = pd.NaT
+                    if timestamp_match and len(timestamp_match.group(1)) == 14:
+                        try:
+                            dt = datetime.strptime(timestamp_match.group(1), "%Y%m%d%H%M%S")
+                            article_date = dt
+                        except ValueError:
+                            pass
+
+                    article = {
+                        "url": link["href"],
+                        "headline": headline,
+                        "description": description[:200]
+                        if len(description) > 200
+                        else description,
+                        "author": author,
+                        "date": article_date,
+                    }
+
+                    # Only add if URL not already visited (prevents duplicates across pages)
+                    if article["url"] not in visited_urls:
+                        articles.append(article)
+                        visited_urls.add(article["url"])
+
+                progress.update(task_id, advance=1)
 
     except Exception as e:
         logger.error(f"Error scraping {url}: {e}")

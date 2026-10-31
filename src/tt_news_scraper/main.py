@@ -1,5 +1,6 @@
 """Trinidad & Tobago News Scraper - Fetches headlines from Trinidad Express and Guardian by source."""
 
+import argparse
 import logging
 from importlib import metadata
 
@@ -7,20 +8,17 @@ import pandas as pd
 
 from tt_news_scraper.dataset_handling.data_saving_utils import save_dataset
 from tt_news_scraper.dataset_handling.merging_utils import fetch_unified_dataset
-
-logger = logging.getLogger(__name__)
+from tt_news_scraper.logging_config import setup_logging
 
 
 def main() -> None:
     """CLI entry point."""
-    import argparse
 
     parser = argparse.ArgumentParser(
         description="Scrape Trinidad news headlines from Express or Guardian by source",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     parser.add_argument(
-        "-v",
         "--version",
         action="version",
         version=f"tt-news-scraper v{metadata.version('tt-news-scraper')}",
@@ -60,8 +58,21 @@ def main() -> None:
         default=False,
         help="Fetch full article content in addition to headlines (slower, ~3x fetch time per article)",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        default=False,
+        help="Enable DEBUG-level logging with detailed per-URL feedback",
+    )
 
     args = parser.parse_args()
+
+    # Configure logging based on verbose flag
+    if args.verbose:
+        logger = setup_logging(logging.DEBUG)
+    else:
+        logger = setup_logging(logging.INFO)
 
     # Fetch unified dataset using the wrapper function
     df = fetch_unified_dataset(
