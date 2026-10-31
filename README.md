@@ -19,6 +19,9 @@ python -m tt_news_scraper --source guardian --search-term "economy" --limit 15
 
 # Custom output file
 python -m tt_news_scraper --output news_headlines.csv
+
+# Fetch full article content (slower, ~3x fetch time per article)
+python -m tt_news_scraper --content --limit 5
 ```
 
 ## Options
@@ -29,6 +32,7 @@ python -m tt_news_scraper --output news_headlines.csv
 | `--limit [N]` | Number of articles/pages to fetch | 10 |
 | `--search-term KEYWORD` | Search keyword for Express (q param) or Guardian | None |
 | `--output FILE` | Output CSV filename | tt_news_headlines.csv |
+| `--content` | Fetch full article content in addition to headlines | False |
 
 ## Output
 
