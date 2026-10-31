@@ -3,6 +3,10 @@ import logging
 import pandas as pd
 
 from tt_news_scraper.const import CANONICAL_COLUMNS
+from tt_news_scraper.fetching_utils.articles import (
+    fetch_express_article_content,
+    fetch_guardian_article_content,
+)
 from tt_news_scraper.fetching_utils.headlines import (
     fetch_express_headlines,
     fetch_guardian_headlines,
@@ -12,7 +16,10 @@ logger = logging.getLogger(__name__)
 
 
 def fetch_unified_dataset(
-    source: str, limit: int | None = None, search_term: str | None = None
+    source: str,
+    limit: int | None = None,
+    search_term: str | None = None,
+    fetch_content: bool = False,
 ) -> pd.DataFrame:
     """Unified entry point for fetching headlines from any supported source."""
     if source == "express":
@@ -33,5 +40,19 @@ def fetch_unified_dataset(
         df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.strftime(
             "%Y-%m-%dT%H:%M:%S"
         )
+
+    # Fetch full article content if requested
+    if fetch_content and not df.empty:
+        logger.info(f"Fetching full content for {len(df)} articles...")
+        urls = df["url"].tolist()
+
+        if source == "express":
+            content_df = fetch_express_article_content(urls)
+        else:  # guardian
+            content_df = fetch_guardian_article_content(urls)
+
+        # Merge content back to headlines on URL column
+        if not content_df.empty:
+            df = pd.merge(df, content_df, on="url", how="left")
 
     return df

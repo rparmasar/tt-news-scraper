@@ -46,6 +46,12 @@ def main() -> None:
         metavar="FILE",
         help="Output CSV filename (default: tt_news_headlines.csv)",
     )
+    parser.add_argument(
+        "--content",
+        action="store_true",
+        default=False,
+        help="Fetch full article content in addition to headlines (slower, ~3x fetch time per article)",
+    )
 
     args = parser.parse_args()
 
@@ -54,6 +60,7 @@ def main() -> None:
         source=args.source,
         limit=args.limit,
         search_term=args.search_term,
+        fetch_content=args.content,
     )
 
     # Export with unified schema

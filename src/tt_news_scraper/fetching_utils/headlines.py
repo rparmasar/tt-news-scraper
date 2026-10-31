@@ -1,4 +1,5 @@
 import logging
+import time
 import urllib.parse
 from datetime import datetime
 
@@ -137,7 +138,9 @@ def _rename_express_columns(df: pd.DataFrame) -> pd.DataFrame:
     col_map = {
         "section_type": None,  # Drop unused column
     }
-    df = df.drop(columns=[col for col in col_map if col_map[col] is not None], errors="ignore")
+    df = df.drop(
+        columns=[col for col in col_map if col_map[col] is not None], errors="ignore"
+    )
     return _rename_guardian_columns(df)
 
 
@@ -160,7 +163,9 @@ def fetch_guardian_headlines(
     """
     # Construct URL if search_term is provided without a base URL
     if search_term and not url:
-        url = f"{BASE_URLS['guardian']}?search_content={urllib.parse.quote(search_term)}"
+        url = (
+            f"{BASE_URLS['guardian']}?search_content={urllib.parse.quote(search_term)}"
+        )
     elif not url:
         url = BASE_URLS["guardian"]
 
