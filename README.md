@@ -1,27 +1,29 @@
 # Trinidad & Tobago News Scraper
 
+[![PyPI](https://img.shields.io/pypi/v/tt-news-scraper)](https://pypi.org/project/tt-news-scraper/)
+
 A CLI tool for fetching news headlines and metadata from Trinidad Express and Guardian.
 
 ## Usage
 
 ```bash
-# Install dependencies
-uv sync  # or: pip install -e .
+# Install (direct PyPI install recommended)
+pip install tt-news-scraper
 
 # Default (Express, latest articles)
-python -m tt_news_scraper
+ttns
 
 # Express with search query
-python -m tt_news_scraper --source express --search-term "politics" --limit 20
+ttns --source express --search-term "politics" --limit 20
 
 # Guardian with search term
-python -m tt_news_scraper --source guardian --search-term "economy" --limit 15
+ttns --source guardian --search-term "economy" --limit 15
 
 # Custom output file
-python -m tt_news_scraper --output news_headlines.csv
+ttns --output news_headlines.csv
 
 # Fetch full article content (slower, ~3x fetch time per article)
-python -m tt_news_scraper --content --limit 5
+ttns --content --limit 5
 ```
 
 ## Options
