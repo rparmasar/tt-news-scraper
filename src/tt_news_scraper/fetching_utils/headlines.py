@@ -6,43 +6,67 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup, Tag
 
+from tt_news_scraper.const import BASE_URLS, CANONICAL_COLUMNS
+
 logger = logging.getLogger(__name__)
 
-# Canonical column schema for unified output (must match main.py)
-CANONICAL_COLUMNS = ["title", "url", "author", "date", "summary"]
 
-
-def fetch_express_headlines(url: str) -> pd.DataFrame:
+def fetch_express_headlines(
+    url: str | None = None, limit: int | None = None, search_term: str | None = None
+) -> pd.DataFrame:
     """Fetch article headlines and metadata from TT Express page.
 
     Args:
-        url: The Trinidad Express search URL to scrape.
+        url: Optional Trinidad Express search URL to scrape. Defaults to homepage.
+              Supports both homepage lists and search result URLs (e.g., ?q=keyword).
+        limit: Maximum number of articles to fetch per page. Only applies when scraping
+               search result URLs with pagination support.
+        search_term: Search keyword for Express mode (used in URL construction if url not provided).
 
     Returns:
-        DataFrame with columns: title, partial_link_to_full_article, author,
-        section_type, published_date, article_summary
+        DataFrame with columns: title, url, author, date, summary
     """
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-        )
-    }
+    # Construct URL if not provided (supports search_term for Express q-param)
+    if url is None:
+        base = BASE_URLS["express"]
+        params = ["&nsa=eedition"]  # Required param for TT Express
+        if limit:
+            params.append(f"&l={limit}")
+        if search_term:
+            from urllib.parse import quote_plus
 
-    try:
-        response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
-    except requests.RequestException as e:
-        logger.error(f"Failed to fetch {url}: {e}")
-        raise
+            params.append(f"&q={quote_plus(search_term)}")
+        url = base + "".join(params)
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    # Handle local file paths for testing (requests doesn't support file:// scheme)
+    if url.startswith("file://"):
+        with open(url, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        soup = BeautifulSoup(html_content, "html.parser")
+    else:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+            )
+        }
+
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            response.raise_for_status()
+        except requests.RequestException as e:
+            logger.error(f"Failed to fetch {url}: {e}")
+            raise
+
+        soup = BeautifulSoup(response.text, "html.parser")
     articles = []
 
     # Find all article cards first (each is a <article> element)
     article_cards = soup.select("article.tnt-asset-type-article")
 
-    for card in article_cards:
+    # Apply limit if specified (respect Guardian's pagination-style fetching)
+    effective_limit = min(len(article_cards), limit or len(article_cards))
+    for card in article_cards[:effective_limit]:
         headline_link = card.select_one(".card-headline h3 a")
         if not headline_link:
             continue
@@ -103,10 +127,18 @@ def fetch_express_headlines(url: str) -> pd.DataFrame:
     if skipped > 0:
         logger.info(f"Filtered out {skipped} non-article card(s)")
 
-    return pd.DataFrame(
-        articles,
-        columns=["url", "title", "summary", "author", "date"],
-    )
+    # Create DataFrame and rename columns to canonical schema before returning
+    df = pd.DataFrame(articles, columns=["url", "title", "summary", "author", "date"])
+    return _rename_express_columns(df)
+
+
+def _rename_express_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename Express-specific column names to canonical schema."""
+    col_map = {
+        "section_type": None,  # Drop unused column
+    }
+    df = df.drop(columns=[col for col in col_map if col_map[col] is not None], errors="ignore")
+    return _rename_guardian_columns(df)
 
 
 def fetch_guardian_headlines(
@@ -128,14 +160,11 @@ def fetch_guardian_headlines(
     """
     # Construct URL if search_term is provided without a base URL
     if search_term and not url:
-        url = f"https://www.guardian.co.tt/?search_content={urllib.parse.quote(search_term)}"
+        url = f"{BASE_URLS['guardian']}?search_content={urllib.parse.quote(search_term)}"
     elif not url:
-        url = "https://www.guardian.co.tt/news-6.12.0.4f1749cb44"
+        url = BASE_URLS["guardian"]
 
     # Fetch page with proper headers to avoid bot detection
-    import time
-
-    time.sleep(1)  # Polite delay between requests
 
     response = requests.get(
         url,

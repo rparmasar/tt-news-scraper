@@ -2,6 +2,7 @@ import logging
 
 import pandas as pd
 
+from tt_news_scraper.const import CANONICAL_COLUMNS
 from tt_news_scraper.fetching_utils.headlines import (
     fetch_express_headlines,
     fetch_guardian_headlines,
@@ -9,25 +10,18 @@ from tt_news_scraper.fetching_utils.headlines import (
 
 logger = logging.getLogger(__name__)
 
-# Canonical column schema for unified output
-CANONICAL_COLUMNS = ["title", "url", "author", "date", "summary"]
-
 
 def fetch_unified_dataset(
     source: str, limit: int | None = None, search_term: str | None = None
 ) -> pd.DataFrame:
     """Unified entry point for fetching headlines from any supported source."""
-    BASE_URL = "https://trinidadexpress.com/search/?t=article&sd=desc"
-
     if source == "express":
-        url_params = [f"&l={limit or 10}", "&nsa=eedition"]
-        if search_term:
-            from urllib.parse import quote_plus
-
-            url_params.append(f"&q={quote_plus(search_term)}")
-        url = BASE_URL + "".join(url_params)
-        logger.info(f"Fetching headlines from: {url}")
-        df = fetch_express_headlines(url)
+        logger.info(f"Fetching headlines from Express with limit={limit}, search_term={search_term}")
+        df = fetch_express_headlines(
+            url=None,  # Let the function construct URL from params
+            limit=limit or 10,
+            search_term=search_term,
+        )
     else:  # guardian
         logger.info(f"Fetching headlines from Guardian with search term: {search_term}")
         df = fetch_guardian_headlines(
