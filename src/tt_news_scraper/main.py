@@ -1,6 +1,7 @@
 """Trinidad & Tobago News Scraper - Fetches headlines from Trinidad Express and Guardian by source."""
 
 import logging
+from importlib import metadata
 
 import pandas as pd
 
@@ -17,6 +18,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Scrape Trinidad news headlines from Express or Guardian by source",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"tt-news-scraper v{metadata.version('tt-news-scraper')}",
+        help="Show the program's version number and exit.",
     )
     parser.add_argument(
         "--source",

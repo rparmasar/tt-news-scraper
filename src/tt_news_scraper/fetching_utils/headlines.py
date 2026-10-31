@@ -162,11 +162,11 @@ def fetch_guardian_headlines(
         pandas.DataFrame with columns: url, headline, description, author, date
     """
     # Construct URL if search_term is provided without a base URL
-    if search_term and not url:
+    if search_term and url is None:
         url = (
             f"{BASE_URLS['guardian']}?search_content={urllib.parse.quote(search_term)}"
         )
-    elif not url:
+    elif url is None:
         url = BASE_URLS["guardian"]
 
     # Fetch page with proper headers to avoid bot detection
@@ -253,7 +253,7 @@ def fetch_guardian_headlines(
             # Extract author (pattern: "byAuthorName" after headline)
             import re
 
-            author_match = re.search(r"\bby(\S+)", all_text, re.IGNORECASE)
+            author_match = re.search(r"by(\S+)", all_text, re.IGNORECASE)
             author = author_match.group(1).strip() if author_match else ""
 
             # Extract timestamp (format: YYYYMMDDHHMMSS at end of metadata section)
@@ -262,7 +262,7 @@ def fetch_guardian_headlines(
             if timestamp_match and len(timestamp_match.group(1)) == 14:
                 try:
                     dt = datetime.strptime(timestamp_match.group(1), "%Y%m%d%H%M%S")
-                    article_date = dt.to_pydatetime()
+                    article_date = dt
                 except ValueError:
                     pass
 
@@ -279,12 +279,9 @@ def fetch_guardian_headlines(
             )
 
     # Only use pagination for search result URLs (those with query params), not homepage
-    if (
-        url
-        and "?" in url
-        and soup.find(class_=lambda x: x and "ag_page_navigation" in str(x))
-    ):
-        articles = scrape_all_guardian_pages(url, max_pages)
+    if url is not None and isinstance(url, str) and "?" in url:
+        if soup.find(class_=lambda x: x and "ag_page_navigation" in str(x)):
+            articles = scrape_all_guardian_pages(url, max_pages)
 
     # Convert URLs to absolute format for consistency
     base_domain = "https://www.guardian.co.tt"
@@ -473,7 +470,7 @@ def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFra
                 if timestamp_match and len(timestamp_match.group(1)) == 14:
                     try:
                         dt = datetime.strptime(timestamp_match.group(1), "%Y%m%d%H%M%S")
-                        article_date = dt.to_pydatetime()
+                        article_date = dt
                     except ValueError:
                         pass
 

@@ -2,7 +2,6 @@ import logging
 
 import pandas as pd
 
-from tt_news_scraper.const import CANONICAL_COLUMNS
 from tt_news_scraper.fetching_utils.articles import (
     fetch_express_article_content,
     fetch_guardian_article_content,

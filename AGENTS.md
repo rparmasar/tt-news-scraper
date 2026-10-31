@@ -3,11 +3,11 @@
 ## Architecture
 
 - Single Python package: `src/tt_news_scraper`
-- Real entrypoint: root-level `main.py` (not inside src/)
+- Real CLI entrypoint: root-level `main.py`, not inside src/
 - Two source backends wired through unified wrapper in `dataset_handling/merging_utils.py`:
   - Express: `fetch_express_headlines()` → TT Express search page with URL params
   - Guardian: `fetch_guardian_headlines()` → list pages + pagination via link-following
-- Output schema (CSV columns): `url,title,summary,author,date` - normalized to ISO format dates
+- Output schema (CSV columns): `url,title,summary,author,date` — normalized to ISO format dates
 
 ## Exact Commands (non-obvious details)
 

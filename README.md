@@ -37,4 +37,4 @@ python -m tt_news_scraper --content --limit 5
 ## Output
 
 - Console: Formatted table showing index, title, and URL per article
-- File: Unified CSV with columns `url`, `title`, `summary`, `author`, `date`
+- File: Unified CSV with columns `url`, `title`, `summary`, `author`, `date` (and `content` if flag is specified)
