@@ -30,8 +30,15 @@ jobs:
       
       - name: Bump version from conventional commits
         run: |
-          # Get last tag
-          LAST_TAG=$(git describe --tags --abbrev=0)
+          # Get last tag; if none exists, create initial tag from current version
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [ -z "$LAST_TAG" ]; then
+            echo "No tags found. Creating initial tag from pyproject.toml..."
+            CURRENT_VERSION=$(uv version --short)
+            git tag -a "v${CURRENT_VERSION}" -m "Initial release v${CURRENT_VERSION}"
+            LAST_TAG="v${CURRENT_VERSION}"
+          fi
           
           # Extract commit types between last tag and HEAD (inclusive)
           COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"%s")
