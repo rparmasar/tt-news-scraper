@@ -1,6 +1,6 @@
 [project]
 name = "tt-news-scraper"
-version = "0.4.6"
+version = "0.4.7"
 readme = "README.md"
 description = "Trinidad and Tobago news scraper using Guardian & Express as sources"
 requires-python = ">=3.12"
