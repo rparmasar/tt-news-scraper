@@ -154,8 +154,8 @@ def fetch_guardian_article_content(urls: Iterable[str]) -> pd.DataFrame:
                 soup = BeautifulSoup(response.text, "html.parser")
 
                 # Extract article content from main body
-                # Guardian uses .article-body or similar selectors
-                content_divs = soup.select(".article-body p, .story-content p, article p")
+                # Guardian uses dynamic class names but paragraphs are inside article-related containers
+                content_divs = soup.select("[class*=\"article\"] p, [class*=\"content\"] p, .agver p")
                 if not content_divs:
                     logger.debug(f"No content found in Guardian article {url}")
                     progress.update(task_id, advance=1)
