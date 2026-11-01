@@ -180,9 +180,7 @@ def fetch_guardian_headlines(
     """
     # Construct URL if search_term is provided without a base URL
     if search_term and url is None:
-        url = (
-            f"{BASE_URLS['guardian']}?search_content={urllib.parse.quote(search_term)}"
-        )
+        url = f"{BASE_URLS['guardian']}?q={urllib.parse.quote(search_term)}"
     elif url is None:
         url = BASE_URLS["guardian"]
 
@@ -219,10 +217,6 @@ def fetch_guardian_headlines(
         if not html_content:
             logger.warning(f"Empty response from Guardian page {url}")
             return pd.DataFrame(columns=CANONICAL_COLUMNS)
-
-        # Debug output
-        print(f"[DEBUG] HTML length: {len(html_content)}")
-        print(f"[DEBUG] First 200 chars: {html_content[:200]}")
 
         soup = BeautifulSoup(html_content, "html.parser")
     except Exception as e:
@@ -273,7 +267,9 @@ def fetch_guardian_headlines(
 
                 # Description is everything between container start and headline
                 headline_pos = all_text.find(headline)
-                description = all_text[:headline_pos].strip() if headline_pos > 0 else ""
+                description = (
+                    all_text[:headline_pos].strip() if headline_pos > 0 else ""
+                )
 
                 # Clean up description (remove extra whitespace, author names in brackets)
                 description = " ".join(description.split())
@@ -420,6 +416,8 @@ def scrape_all_guardian_pages(base_url: str, max_pages: int = 10) -> list[dict]:
             for task_id in progress.tasks.values():
                 progress.finish_task(task_id)
 
+        return all_articles
+
 
 def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFrame:
     """Scrape articles from a single page.
@@ -469,7 +467,9 @@ def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFra
             for container_idx, container in enumerate(
                 soup.find_all(class_=lambda x: x and "_LIST" in str(x)), start=1
             ):
-                task_id = progress.add_task(f"[{container_idx}/{total_containers}]...", total=1)
+                task_id = progress.add_task(
+                    f"[{container_idx}/{total_containers}]...", total=1
+                )
 
                 # Skip sponsored content
                 if "sponsored-list" in str(container.get("class", [])):
@@ -517,7 +517,9 @@ def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFra
                     article_date = pd.NaT
                     if timestamp_match and len(timestamp_match.group(1)) == 14:
                         try:
-                            dt = datetime.strptime(timestamp_match.group(1), "%Y%m%d%H%M%S")
+                            dt = datetime.strptime(
+                                timestamp_match.group(1), "%Y%m%d%H%M%S"
+                            )
                             article_date = dt
                         except ValueError:
                             pass

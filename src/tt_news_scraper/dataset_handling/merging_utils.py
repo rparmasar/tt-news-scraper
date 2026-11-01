@@ -35,7 +35,7 @@ def fetch_unified_dataset(
         )
 
     # Normalize date format to ISO string for consistency
-    if not df["date"].empty:
+    if "date" in df.columns and not df["date"].empty:
         df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.strftime(
             "%Y-%m-%dT%H:%M:%S"
         )
