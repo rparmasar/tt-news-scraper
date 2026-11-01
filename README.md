@@ -40,3 +40,6 @@ ttns --content --limit 5
 
 - Console: Formatted table showing index, title, and URL per article
 - File: Unified CSV with columns `url`, `title`, `summary`, `author`, `date` (and `content` if flag is specified)
+
+see [`sample_output/`](./sample_output/) for example outputs with content.
+

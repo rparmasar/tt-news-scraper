@@ -3,8 +3,8 @@
 ## Architecture
 
 - Single Python package: `src/tt_news_scraper`
-- Real CLI entrypoint: root-level `main.py`, not inside src/
-- Two source backends wired through unified wrapper in `dataset_handling/merging_utils.py`:
+- CLI entrypoint: root-level `main.py` (exposed as `ttns` command via pyproject.toml)
+- Two source backends wired through unified wrapper in `src/tt_news_scraper/dataset_handling/merging_utils.py`:
   - Express: `fetch_express_headlines()` → TT Express search page with URL params
   - Guardian: `fetch_guardian_headlines()` → list pages + pagination via link-following
 - Output schema (CSV columns): `url,title,summary,author,date` — normalized to ISO format dates
@@ -14,18 +14,18 @@
 | Task | Command |
 |------|---------|
 | Install deps | `uv sync` or `pip install -e .` |
-| Run Express default | `python main.py --source express --limit 10` |
-| Run Guardian with search | `python main.py --source guardian --search-term "politics" --limit 20` |
-| Output to file | `python main.py --output news.csv` |
-| Test with local HTML (Express) | `python main.py --source express --url file://example_htmls/single_express_article.html` |
-| Test with local HTML (Guardian) | `python main.py --source guardian --url file://example_htmls/guardian_example.html` |
+| Run CLI default | `ttns` or `python -m tt_news_scraper.main` |
+| Express with search | `ttns --source express --search-term "politics" --limit 20` |
+| Guardian with search | `ttns --source guardian --search-term "economy" --limit 15` |
+| Output to file | `ttns --output news.csv` |
+| Fetch full content (slow) | `ttns --content --limit 5` |
+| Run tests | `uv run pytest tests/ -v` |
+| Lint | `uv run ruff check src/ tests/` |
 
 ## Testing & Verification
 
-- Stub tests exist in `tests/test_articles.py` but don't exercise real scraping; use manual CSV verification.
-- Example HTMLs in `example_htmls/` for local parsing tests:
-  - `single_express_article.html`, `single_guardian_article.html`
-  - `guardian_default_search_page.html`, `guardian_example.html`
+- Tests in `tests/test_articles.py` and `tests/test_headlines.py`; use `responses` mocks for HTTP.
+- No local HTML fixtures; all scraping is mocked via responses library.
 
 ## Key Quirks & Gotchas
 
