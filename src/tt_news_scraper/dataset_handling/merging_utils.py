@@ -22,12 +22,15 @@ def fetch_unified_dataset(
 ) -> pd.DataFrame:
     """Unified entry point for fetching headlines from any supported source."""
     if source == "express":
-        logger.info(f"Fetching headlines from Express with limit={limit}, search_term={search_term}")
+        logger.info(
+            f"Fetching headlines from Express with limit={limit}, search_term={search_term}"
+        )
         df = fetch_express_headlines(
             url=None,  # Let the function construct URL from params
             limit=limit or 10,
             search_term=search_term,
         )
+        print(df)
     else:  # guardian
         logger.info(f"Fetching headlines from Guardian with search term: {search_term}")
         df = fetch_guardian_headlines(

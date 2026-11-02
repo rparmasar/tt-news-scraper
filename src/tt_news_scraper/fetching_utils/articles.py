@@ -5,15 +5,10 @@ import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 
+from tt_news_scraper.const import ARTICLE_REQUEST_TIMEOUT, BASE_DOMAINS
 from tt_news_scraper.progress import FetchingProgress
 
 logger = logging.getLogger(__name__)
-
-# Base domain for URL normalization
-BASE_DOMAINS = {
-    "express": "https://trinidadexpress.com",
-    "guardian": "https://www.guardian.co.tt",
-}
 
 
 def fetch_express_article_content(urls: Iterable[str]) -> pd.DataFrame:
@@ -57,11 +52,13 @@ def fetch_express_article_content(urls: Iterable[str]) -> pd.DataFrame:
                             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                         ),
                     },
-                    timeout=30,
+                    timeout=ARTICLE_REQUEST_TIMEOUT,
                 )
 
                 if not response.ok:
-                    logger.warning(f"Failed to fetch Express article {url}: HTTP {response.status_code}")
+                    logger.warning(
+                        f"Failed to fetch Express article {url}: HTTP {response.status_code}"
+                    )
                     progress.update(task_id, advance=1)
                     continue
 
@@ -69,7 +66,9 @@ def fetch_express_article_content(urls: Iterable[str]) -> pd.DataFrame:
 
                 # Extract article content from main article body
                 # TT Express uses .tnt-article-content or similar selectors
-                content_divs = soup.select(".tnt-article-content, .article-body, article p")
+                content_divs = soup.select(
+                    ".tnt-article-content, .article-body, article p"
+                )
                 if not content_divs:
                     logger.debug(f"No content found in Express article {url}")
                     progress.update(task_id, advance=1)
@@ -143,11 +142,13 @@ def fetch_guardian_article_content(urls: Iterable[str]) -> pd.DataFrame:
                             "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                         ),
                     },
-                    timeout=30,
+                    timeout=ARTICLE_REQUEST_TIMEOUT,
                 )
 
                 if not response.ok:
-                    logger.warning(f"Failed to fetch Guardian article {url}: HTTP {response.status_code}")
+                    logger.warning(
+                        f"Failed to fetch Guardian article {url}: HTTP {response.status_code}"
+                    )
                     progress.update(task_id, advance=1)
                     continue
 
@@ -155,7 +156,9 @@ def fetch_guardian_article_content(urls: Iterable[str]) -> pd.DataFrame:
 
                 # Extract article content from main body
                 # Guardian uses dynamic class names but paragraphs are inside article-related containers
-                content_divs = soup.select("[class*=\"article\"] p, [class*=\"content\"] p, .agver p")
+                content_divs = soup.select(
+                    '[class*="article"] p, [class*="content"] p, .agver p'
+                )
                 if not content_divs:
                     logger.debug(f"No content found in Guardian article {url}")
                     progress.update(task_id, advance=1)

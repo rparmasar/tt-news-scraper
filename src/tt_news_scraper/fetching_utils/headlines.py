@@ -137,6 +137,10 @@ def fetch_express_headlines(
             for task_id in progress.tasks.values():
                 progress.finish_task(task_id)
 
+    # Only use pagination for search result URLs (those with query params), not homepage
+    if url is not None and isinstance(url, str) and "?" in url:
+        articles = scrape_all_express_pages(url, limit or 20)
+
     # Log skipped entries
     total_cards = len(article_cards)
     extracted_count = len(articles)
@@ -148,6 +152,192 @@ def fetch_express_headlines(
     # Create DataFrame and rename columns to canonical schema before returning
     df = pd.DataFrame(articles, columns=["url", "title", "summary", "author", "date"])
     return _rename_express_columns(df)
+
+
+def scrape_all_express_pages(base_url: str, limit: int | None = 20) -> list[dict]:
+    """Fetch all pagination pages for a search result URL.
+
+    Uses iterative link-following instead of URL construction to handle
+    Express's dynamic pagination structure correctly.
+
+    Args:
+        base_url: The original search result URL (e.g., with ?q=...)
+        limit: Maximum number of articles to fetch across all pages
+
+    Returns:
+        list of article dicts from all pages
+    """
+
+    all_articles = []
+    visited_urls = set()
+    page_queue = [base_url]  # Queue for iterative BFS-style traversal
+
+    total_expected = limit or float("inf")
+    with FetchingProgress(
+        description=f"Scraping Express pagination ({limit} articles)",
+        total=total_expected,
+    ) as progress:
+        while page_queue and len(all_articles) < total_expected:
+            current_url = page_queue.pop(0)
+
+            if current_url in visited_urls:
+                continue
+            visited_urls.add(current_url)
+
+            task_id = progress.add_task(f"{current_url[:50]}...", total=1)
+
+            try:
+                response = requests.get(
+                    current_url,
+                    headers={
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                        ),
+                    },
+                    timeout=30,
+                )
+
+                if not response.ok:
+                    logger.error(
+                        f"Failed to fetch Express page {current_url}: HTTP {response.status_code}"
+                    )
+                    progress.update(task_id, advance=1)
+                    continue
+
+                html = (response.text or "").strip()
+
+                soup = BeautifulSoup(html, "html.parser")
+
+                # Scrape articles from current page and extend the list
+                scraped_df = _scrape_single_express_page(current_url, visited_urls)
+                all_articles.extend(scraped_df.to_dict(orient="records"))
+
+                # Extract pagination links and add new pages to queue
+                for nav_elem in soup.find_all(
+                    class_=lambda x: x and "ag_page_navigation" in str(x)
+                ):
+                    for a in nav_elem.find_all("a", href=True):
+                        link_text = a.get_text(strip=True)
+
+                        # Detect pagination-style links (Next/Prev, page numbers, etc.)
+                        is_pagination = any(
+                            word in link_text.lower()
+                            for word in ["next", "prev", "previous"]
+                        ) or len(link_text) > 2 and link_text[0].isdigit()
+
+                        if is_pagination:
+                            new_url = urllib.parse.urljoin(current_url, a["href"])
+                            if new_url not in visited_urls:
+                                page_queue.append(new_url)
+
+                progress.update(task_id, advance=1)
+
+            except Exception as e:
+                logger.error(f"Error fetching {current_url}: {e}")
+                progress.update(task_id, advance=1)
+
+        # Mark all tasks as complete
+        if page_queue or all_articles:
+            for task_id in progress.tasks.values():
+                progress.finish_task(task_id)
+
+        return all_articles
+
+
+def _scrape_single_express_page(url: str, visited_urls: set[str]) -> pd.DataFrame:
+    """Scrape articles from a single Express page.
+
+    Args:
+        url: The page URL to scrape
+        visited_urls: Set of already-visited URLs (for deduplication)
+
+    Returns:
+        list of article dicts
+    """
+    import time
+
+    articles = []
+
+    try:
+        time.sleep(1)  # Polite delay between requests
+
+        response = requests.get(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+            },
+            timeout=30,
+        )
+
+        if not response.ok:
+            logger.error(f"Failed to fetch Express page {url}: HTTP {response.status_code}")
+            return pd.DataFrame(columns=["url", "title", "summary", "author", "date"])
+
+        html = (response.text or "").strip()
+        soup = BeautifulSoup(html, "html.parser")
+
+        # Find all article cards first (each is a <article> element)
+        article_cards = soup.select("article.tnt-asset-type-article")
+
+        for card in article_cards:
+            headline_link = card.select_one(".card-headline h3 a")
+            if not headline_link:
+                continue
+
+            title_tag: Tag | None = headline_link.find_parent("h3") or headline_link
+
+            title = (title_tag.get_text(strip=True) or "").strip()
+            if not title:
+                continue  # Skip entries without a title
+
+            # Extract the partial article link from href attribute
+            partial_link = str(headline_link.get("href", "")).strip()
+            if not partial_link:
+                continue  # Skip entries without a link
+
+            # Extract author (blank if missing)
+            author_elem = card.select_one(".card-byline span.tnt-byline.asset-byline")
+            author = author_elem.get_text(strip=True) if author_elem else ""
+
+            # Extract section type ("General" if missing, preserve exact text when present)
+            section_elem = card.select_one(".card-label-section a.tnt-section-tag")
+            section_type = section_elem.text.strip() if section_elem else "General"
+
+            # Extract published_date (ISO format from datetime attribute)
+            time_tag = card.select_one("time[datetime]")
+            published_date = ""
+            if time_tag and time_tag.has_attr("datetime"):
+                try:
+                    dt_str = time_tag["datetime"]
+                    parsed_dt = datetime.fromisoformat(dt_str)
+                    published_date = parsed_dt.isoformat()
+                except ValueError:
+                    pass  # Keep empty on parse failure
+
+            # Extract article summary (full paragraph, not truncated)
+            lead_p = card.select_one(".card-lead p.tnt-summary")
+            article_summary = lead_p.get_text(strip=True) if lead_p else ""
+
+            base_domain = "https://trinidadexpress.com"
+            articles.append(
+                {
+                    "url": base_domain + partial_link,
+                    "title": title,
+                    "author": author,
+                    "section_type": section_type,
+                    "date": published_date,
+                    "summary": article_summary,
+                }
+            )
+
+    except Exception as e:
+        logger.error(f"Error scraping Express page {url}: {e}")
+
+    return pd.DataFrame(articles, columns=["url", "title", "summary", "author", "date"])
 
 
 def _rename_express_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -400,7 +590,14 @@ def scrape_all_guardian_pages(base_url: str, max_pages: int = 10) -> list[dict]:
                 ):
                     for a in nav_elem.find_all("a", href=True):
                         link_text = a.get_text(strip=True)
-                        if any(c.isdigit() for c in link_text) and len(link_text) > 1:
+
+                        # Detect pagination-style links (Next/Prev, page numbers, etc.)
+                        is_pagination = any(
+                            word in link_text.lower()
+                            for word in ["next", "prev", "previous"]
+                        ) or len(link_text) > 2 and link_text[0].isdigit()
+
+                        if is_pagination:
                             new_url = urllib.parse.urljoin(current_url, a["href"])
                             if new_url not in visited_urls:
                                 page_queue.append(new_url)

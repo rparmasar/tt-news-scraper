@@ -29,7 +29,7 @@
 
 ## Key Quirks & Gotchas
 
-1. **Guardian pagination**: Uses iterative link-following (BFS) instead of URL construction to handle dynamic pagination; respects `max_pages` limit (~20 articles/page).
+1. **Pagination link detection**: Both Express and Guardian scrapers detect pagination links by text content (e.g., "Next »", "Previous «") in addition to numeric patterns. The scraper uses iterative BFS-style traversal instead of URL construction to handle dynamic pagination structures correctly.
 2. **Express search param**: Uses `&q=` for keyword search on TT Express, plus required `&nsa=eedition`.
 3. **Guardian retry-on-fail**: On HTTP errors, waits 2s and retries once before raising; includes 1s sleep between pagination requests.
 4. **Date normalization**: Output dates are normalized to ISO format (`%Y-%m-%dT%H:%M:%S`) in `merging_utils.py`.
