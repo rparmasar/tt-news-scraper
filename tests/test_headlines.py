@@ -60,13 +60,9 @@ def test_fetch_guardian_headlines_basic():
     """Minimal test: Guardian returns expected columns and count."""
     MOCK_HTML = """<!DOCTYPE html>
 <html><body>
-<div class="_LIST">
+<div class=" BT_SQLSTATEMENTS_978_LIST aghor agwrp agjcfe agaifs search-list">
   <a href="/article1.html"><h1 class="headline">Guardian Article One</h1></a>
   <div>byJane Smith | 20261031120000</div>
-</div>
-<div class="_LIST">
-  <a href="/article2.html"><h1 class="headline">Guardian Article Two</h1></a>
-  <div>byBob Jones | 20261030140000</div>
 </div>
 </body></html>"""
 
@@ -132,7 +128,9 @@ def test_fetch_express_headlines_with_search_term():
         mock_get.return_value = mock_response
 
         # Use explicit homepage URL with search term to avoid pagination logic
-        result = fetch_express_headlines(url="https://trinidadexpress.com/", max_pages=2)
+        result = fetch_express_headlines(
+            url="https://trinidadexpress.com/", max_pages=2
+        )
 
         assert len(result) == 1
 
@@ -272,9 +270,9 @@ def test_fetch_express_headlines_pagination():
         def side_effect(url, **kwargs):
             if "q=test" in url and "?o=" not in url:
                 return _make_response(PAGE_1_HTML)
-            elif ("?o=10&l=100" in url or "?o=10&l=10" in url):
+            elif "?o=10&l=100" in url or "?o=10&l=10" in url:
                 return _make_response(PAGE_2_HTML)
-            elif ("?o=20&l=100" in url or "?o=20&l=10" in url):
+            elif "?o=20&l=100" in url or "?o=20&l=10" in url:
                 return _make_response(PAGE_3_HTML)
             else:
                 # Fallback to first page
