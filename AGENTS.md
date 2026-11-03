@@ -15,10 +15,10 @@
 |------|---------|
 | Install deps | `uv sync` or `pip install -e .` |
 | Run CLI default | `ttns` or `python -m tt_news_scraper.main` |
-| Express with search | `ttns --source express --search-term "politics" --limit 20` |
-| Guardian with search | `ttns --source guardian --search-term "economy" --limit 15` |
+| Express with search | `ttns --source express --search-term "politics" --max-pages 20` |
+| Guardian with search | `ttns --source guardian --search-term "economy" --max-pages 15` |
 | Output to file | `ttns --output news.csv` |
-| Fetch full content (slow) | `ttns --content --limit 5` |
+| Fetch full content (slow) | `ttns --content --max-pages 5` |
 | Run tests | `uv run pytest tests/ -v` |
 | Lint | `uv run ruff check src/ tests/` |
 

@@ -14,16 +14,16 @@ pip install tt-news-scraper
 ttns
 
 # Express with search query
-ttns --source express --search-term "politics" --limit 20
+ttns --source express --search-term "politics" --max-pages 20
 
 # Guardian with search term
-ttns --source guardian --search-term "economy" --limit 15
+ttns --source guardian --search-term "economy" --max-pages 15
 
 # Custom output file
 ttns --output news_headlines.csv
 
 # Fetch full article content (slower, ~3x fetch time per article)
-ttns --content --limit 5
+ttns --content --max-pages 5
 ```
 
 ## Options
@@ -31,7 +31,7 @@ ttns --content --limit 5
 | Flag | Description | Default |
 |------|-------------|---------|
 | `--source {express,guardian}` | Data source to fetch from | express |
-| `--limit [N]` | Number of articles/pages to fetch | 10 |
+| `--max-pages [N]` | Number of pages/articles to fetch | 10 |
 | `--search-term KEYWORD` | Search keyword for Express (q param) or Guardian | None |
 | `--output FILE` | Output CSV filename | tt_news_headlines.csv |
 | `--content` | Fetch full article content in addition to headlines | False |
@@ -42,4 +42,8 @@ ttns --content --limit 5
 - File: Unified CSV with columns `url`, `title`, `summary`, `author`, `date` (and `content` if flag is specified)
 
 see [`sample_output/`](./sample_output/) for example outputs with content.
+
+## Pagination Details
+
+See [`docs/PAGINATION.md`](./docs/PAGINATION.md) for detailed information on how pagination navigation works for both Express and Guardian sources.
 
