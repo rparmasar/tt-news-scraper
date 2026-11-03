@@ -16,25 +16,25 @@ logger = logging.getLogger(__name__)
 
 def fetch_unified_dataset(
     source: str,
-    limit: int | None = None,
+    max_pages: int | None = None,
     search_term: str | None = None,
     fetch_content: bool = False,
 ) -> pd.DataFrame:
     """Unified entry point for fetching headlines from any supported source."""
     if source == "express":
         logger.info(
-            f"Fetching headlines from Express with limit={limit}, search_term={search_term}"
+            f"Fetching headlines from Express with max_pages={max_pages}, search_term={search_term}"
         )
         df = fetch_express_headlines(
             url=None,  # Let the function construct URL from params
-            limit=limit or 10,
+            max_pages=max_pages or 10,
             search_term=search_term,
         )
         print(df)
     else:  # guardian
         logger.info(f"Fetching headlines from Guardian with search term: {search_term}")
         df = fetch_guardian_headlines(
-            url=None, search_term=search_term, max_pages=limit or 10
+            url=None, search_term=search_term, max_pages=max_pages or 10
         )
 
     # Normalize date format to ISO string for consistency

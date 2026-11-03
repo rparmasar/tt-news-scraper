@@ -50,7 +50,7 @@ def test_fetch_express_headlines_basic():
         mock_response.raise_for_status = lambda: None  # Add missing method for mocking
         mock_get.return_value = mock_response
 
-        result = fetch_express_headlines(url=url, limit=10)
+        result = fetch_express_headlines(url=url, max_pages=2)
 
         assert len(result) == 2
         assert list(result.columns) == ["url", "title", "summary", "author", "date"]
@@ -132,7 +132,7 @@ def test_fetch_express_headlines_with_search_term():
         mock_get.return_value = mock_response
 
         # Use explicit homepage URL with search term to avoid pagination logic
-        result = fetch_express_headlines(url="https://trinidadexpress.com/", limit=10)
+        result = fetch_express_headlines(url="https://trinidadexpress.com/", max_pages=2)
 
         assert len(result) == 1
 
@@ -237,7 +237,7 @@ def test_fetch_express_headlines_pagination():
   <time datetime="2026-10-30T08:00:00"></time>
   <div class="card-lead"><p class="tnt-summary">Summary two.</p></div>
 </article>
-<div class="ag_page_navigation"><a href="?o=10&l=10">Next &raquo;</a></div>
+    <div class="pagination pagination-lg"><a href="?o=10&l=10">Next &raquo;</a></div>
 </body></html>"""
 
         # Page 2: 2 more article cards + pagination nav to page 3 (headlines > 20 chars)
@@ -255,7 +255,7 @@ def test_fetch_express_headlines_pagination():
   <time datetime="2026-10-28T08:00:00"></time>
   <div class="card-lead"><p class="tnt-summary">Summary four.</p></div>
 </article>
-<div class="ag_page_navigation"><a href="?o=20&l=10">Next &raquo;</a></div>
+<div class="pagination pagination-lg"><a href="?o=20&l=10">Next &raquo;</a></div>
 </body></html>"""
 
         # Page 3: no pagination (end of results) (headline > 20 chars)
@@ -272,9 +272,9 @@ def test_fetch_express_headlines_pagination():
         def side_effect(url, **kwargs):
             if "q=test" in url and "?o=" not in url:
                 return _make_response(PAGE_1_HTML)
-            elif "?o=10&l=10" in url:
+            elif ("?o=10&l=100" in url or "?o=10&l=10" in url):
                 return _make_response(PAGE_2_HTML)
-            elif "?o=20&l=10" in url:
+            elif ("?o=20&l=100" in url or "?o=20&l=10" in url):
                 return _make_response(PAGE_3_HTML)
             else:
                 # Fallback to first page
@@ -283,7 +283,7 @@ def test_fetch_express_headlines_pagination():
         mock_get.side_effect = side_effect
 
         url = "https://trinidadexpress.com/?q=test&l=10"
-        result = fetch_express_headlines(url=url, limit=20)
+        result = fetch_express_headlines(url=url, max_pages=3)
 
         assert len(result) == 5, (
             f"Expected 5 articles from pagination, got {len(result)}"

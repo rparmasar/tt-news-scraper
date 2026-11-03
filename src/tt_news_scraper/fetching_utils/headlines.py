@@ -14,15 +14,15 @@ logger = logging.getLogger(__name__)
 
 
 def fetch_express_headlines(
-    url: str | None = None, limit: int | None = None, search_term: str | None = None
+    url: str | None = None, max_pages: int | None = None, search_term: str | None = None
 ) -> pd.DataFrame:
     """Fetch article headlines and metadata from TT Express page.
 
     Args:
         url: Optional Trinidad Express search URL to scrape. Defaults to homepage.
               Supports both homepage lists and search result URLs (e.g., ?q=keyword).
-        limit: Maximum number of articles to fetch per page. Only applies when scraping
-               search result URLs with pagination support.
+        max_pages: Maximum pagination pages to fetch for search results. Only applies when scraping
+                search result URLs with pagination support.
         search_term: Search keyword for Express mode (used in URL construction if url not provided).
 
     Returns:
@@ -32,8 +32,8 @@ def fetch_express_headlines(
     if url is None:
         base = BASE_URLS["express"]
         params = ["&nsa=eedition"]  # Required param for TT Express
-        if limit:
-            params.append(f"&l={limit}")
+        # Always use l=100 for Express (hardcoded per requirements)
+        params.append("&l=100")  
         if search_term:
             from urllib.parse import quote_plus
 
@@ -66,8 +66,8 @@ def fetch_express_headlines(
     # Find all article cards first (each is a <article> element)
     article_cards = soup.select("article.tnt-asset-type-article")
 
-    # Apply limit if specified (respect Guardian's pagination-style fetching)
-    effective_limit = min(len(article_cards), limit or len(article_cards))
+    # Apply max_pages if specified (respect Guardian's pagination-style fetching)
+    effective_limit = min(len(article_cards), max_pages or len(article_cards))
 
     # Add progress tracking for batch fetching
     with FetchingProgress(
@@ -139,7 +139,7 @@ def fetch_express_headlines(
 
     # Only use pagination for search result URLs (those with query params), not homepage
     if url is not None and isinstance(url, str) and "?" in url:
-        articles = scrape_all_express_pages(url, limit or 20)
+        articles = scrape_all_express_pages(url, max_pages or 10)
 
     # Log skipped entries
     total_cards = len(article_cards)
@@ -154,7 +154,7 @@ def fetch_express_headlines(
     return _rename_express_columns(df)
 
 
-def scrape_all_express_pages(base_url: str, limit: int | None = 20) -> list[dict]:
+def scrape_all_express_pages(base_url: str, max_pages: int | None = 10) -> list[dict]:
     """Fetch all pagination pages for a search result URL.
 
     Uses iterative link-following instead of URL construction to handle
@@ -162,7 +162,7 @@ def scrape_all_express_pages(base_url: str, limit: int | None = 20) -> list[dict
 
     Args:
         base_url: The original search result URL (e.g., with ?q=...)
-        limit: Maximum number of articles to fetch across all pages
+        max_pages: Maximum number of pagination pages to fetch
 
     Returns:
         list of article dicts from all pages
@@ -172,9 +172,12 @@ def scrape_all_express_pages(base_url: str, limit: int | None = 20) -> list[dict
     visited_urls = set()
     page_queue = [base_url]  # Queue for iterative BFS-style traversal
 
-    total_expected = limit or float("inf")
+    # Track pages fetched (including base URL)
+    pages_fetched = 0
+    
+    total_expected = float("inf")  # No article cap
     with FetchingProgress(
-        description=f"Scraping Express pagination ({limit} articles)",
+        description=f"Scraping Express pagination (--max-pages {max_pages})",
         total=total_expected,
     ) as progress:
         while page_queue and len(all_articles) < total_expected:
@@ -184,9 +187,20 @@ def scrape_all_express_pages(base_url: str, limit: int | None = 20) -> list[dict
                 continue
             visited_urls.add(current_url)
 
+            pages_fetched += 1
+            
+            # Enforce max_pages limit (counts all pages including base URL)
+            if pages_fetched > max_pages and len(all_articles) < total_expected:
+                logger.info(f"Reached max_pages limit ({max_pages})")
+                break
+
             task_id = progress.add_task(f"{current_url[:50]}...", total=1)
 
             try:
+                import time
+
+                time.sleep(1)  # Polite delay between requests
+
                 response = requests.get(
                     current_url,
                     headers={
@@ -213,23 +227,50 @@ def scrape_all_express_pages(base_url: str, limit: int | None = 20) -> list[dict
                 scraped_df = _scrape_single_express_page(current_url, visited_urls)
                 all_articles.extend(scraped_df.to_dict(orient="records"))
 
-                # Extract pagination links and add new pages to queue
-                for nav_elem in soup.find_all(
-                    class_=lambda x: x and "ag_page_navigation" in str(x)
-                ):
-                    for a in nav_elem.find_all("a", href=True):
+                # Extract pagination links - EXPRESS-SPECIFIC STRUCTURE:
+                for nav_elem in soup.find_all(class_=lambda x: x and "pagination" in str(x)):
+                    for a in nav_elem.find_all("a", href=True):  # Only follow links with href
                         link_text = a.get_text(strip=True)
 
-                        # Detect pagination-style links (Next/Prev, page numbers, etc.)
+                        # Detect pagination-style links (Next/Prev, page numbers, or SVG-only icons)
                         is_pagination = any(
                             word in link_text.lower()
                             for word in ["next", "prev", "previous"]
                         ) or len(link_text) > 2 and link_text[0].isdigit()
 
+                        # Also detect icon-based pagination links (Font Awesome, SVG icons)
+                        has_icon_class = False  # Initialize before try block
+                        svg = None
+
+                        if not is_pagination:
+                            # Check for Font Awesome or similar icon classes in descendants
+                            try:
+                                # Convert to list first to avoid iterator issues with BeautifulSoup versions
+                                nodes = list(a.descendants)
+                                has_icon_class = any(
+                                    "fas" in str(c).lower() or "tnt-chevron" in str(c).lower()
+                                    for node in nodes
+                                    if hasattr(node, "get") and (c := node.get("class", []))
+                                )
+                            except Exception as e:  # Handle edge cases with BeautifulSoup versions
+                                logger.debug(f"Error checking icon class for link {a['href']}: {e}")
+
+                        # Check for SVG elements inside the link
+                        if svg is None:
+                            svg = a.find("svg")
+
+                        # Set is_pagination if we found icon classes or SVG
+                        if has_icon_class or svg:
+                            is_pagination = True
+
                         if is_pagination:
                             new_url = urllib.parse.urljoin(current_url, a["href"])
-                            if new_url not in visited_urls:
-                                page_queue.append(new_url)
+                            
+                            # Normalize URL to use l=100 (reduces total HTTP requests)
+                            normalized_url = normalize_express_pagination_url(new_url)
+                            
+                            if normalized_url not in visited_urls:
+                                page_queue.append(normalized_url)
 
                 progress.update(task_id, advance=1)
 
@@ -520,6 +561,32 @@ def _rename_guardian_columns(df: pd.DataFrame) -> pd.DataFrame:
     }
     df.rename(columns=col_map, inplace=True)
     return df
+
+
+def normalize_express_pagination_url(url: str) -> str:
+    """Normalize Express pagination URL to use l=100 parameter."""
+    if not url.startswith("http"):
+        # Relative URL - prepend base domain
+        from tt_news_scraper.const import BASE_URLS
+        url = BASE_URLS["express"] + url
+    
+    # Parse query params
+    from urllib.parse import parse_qs, urlparse, urlencode, urlunparse
+    parsed = urlparse(url)
+    
+    # Extract existing params
+    params = parse_qs(parsed.query)
+    
+    # Force l=100 (reduces pagination overhead)
+    if "l" in params:
+        params["l"] = ["100"]
+    else:
+        params["l"] = ["100"]
+    
+    # Rebuild URL with normalized params
+    new_query = urlencode(params, doseq=True)
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, 
+                      parsed.params, new_query, parsed.fragment))
 
 
 def scrape_all_guardian_pages(base_url: str, max_pages: int = 10) -> list[dict]:

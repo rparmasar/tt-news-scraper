@@ -31,12 +31,12 @@ def main() -> None:
         help="Data source to fetch from (default: express)",
     )
     parser.add_argument(
-        "--limit",
+        "--max-pages",
         type=int,
         nargs="?",
         const=10,
         metavar="N",
-        help="Number of articles/pages to fetch (default: 10)",
+        help="Maximum pages of results to fetch (default: 10)",
     )
     parser.add_argument(
         "--search-term",
@@ -68,6 +68,12 @@ def main() -> None:
 
     args = parser.parse_args()
 
+    # Show help if no meaningful arguments provided (e.g., just "ttns")
+    # Check if all params are at their defaults/None values
+    if args.source == "express" and args.max_pages is None and not args.search_term:
+        parser.print_help()
+        return
+
     # Configure logging based on verbose flag
     if args.verbose:
         logger = setup_logging(logging.DEBUG)
@@ -77,7 +83,7 @@ def main() -> None:
     # Fetch unified dataset using the wrapper function
     df = fetch_unified_dataset(
         source=args.source,
-        limit=args.limit,
+        max_pages=args.max_pages,
         search_term=args.search_term,
         fetch_content=args.content,
     )
