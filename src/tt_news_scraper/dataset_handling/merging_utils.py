@@ -30,7 +30,6 @@ def fetch_unified_dataset(
             max_pages=max_pages or 10,
             search_term=search_term,
         )
-        print(df)
     else:  # guardian
         logger.info(f"Fetching headlines from Guardian with search term: {search_term}")
         df = fetch_guardian_headlines(

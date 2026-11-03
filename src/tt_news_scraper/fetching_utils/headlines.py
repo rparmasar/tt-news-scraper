@@ -33,7 +33,7 @@ def fetch_express_headlines(
         base = BASE_URLS["express"]
         params = ["&nsa=eedition"]  # Required param for TT Express
         # Always use l=100 for Express (hardcoded per requirements)
-        params.append("&l=100")  
+        params.append("&l=100")
         if search_term:
             from urllib.parse import quote_plus
 
@@ -174,7 +174,7 @@ def scrape_all_express_pages(base_url: str, max_pages: int | None = 10) -> list[
 
     # Track pages fetched (including base URL)
     pages_fetched = 0
-    
+
     total_expected = float("inf")  # No article cap
     with FetchingProgress(
         description=f"Scraping Express pagination (--max-pages {max_pages})",
@@ -188,7 +188,7 @@ def scrape_all_express_pages(base_url: str, max_pages: int | None = 10) -> list[
             visited_urls.add(current_url)
 
             pages_fetched += 1
-            
+
             # Enforce max_pages limit (counts all pages including base URL)
             if pages_fetched > max_pages and len(all_articles) < total_expected:
                 logger.info(f"Reached max_pages limit ({max_pages})")
@@ -228,15 +228,23 @@ def scrape_all_express_pages(base_url: str, max_pages: int | None = 10) -> list[
                 all_articles.extend(scraped_df.to_dict(orient="records"))
 
                 # Extract pagination links - EXPRESS-SPECIFIC STRUCTURE:
-                for nav_elem in soup.find_all(class_=lambda x: x and "pagination" in str(x)):
-                    for a in nav_elem.find_all("a", href=True):  # Only follow links with href
+                for nav_elem in soup.find_all(
+                    class_=lambda x: x and "pagination" in str(x)
+                ):
+                    for a in nav_elem.find_all(
+                        "a", href=True
+                    ):  # Only follow links with href
                         link_text = a.get_text(strip=True)
 
                         # Detect pagination-style links (Next/Prev, page numbers, or SVG-only icons)
-                        is_pagination = any(
-                            word in link_text.lower()
-                            for word in ["next", "prev", "previous"]
-                        ) or len(link_text) > 2 and link_text[0].isdigit()
+                        is_pagination = (
+                            any(
+                                word in link_text.lower()
+                                for word in ["next", "prev", "previous"]
+                            )
+                            or len(link_text) > 2
+                            and link_text[0].isdigit()
+                        )
 
                         # Also detect icon-based pagination links (Font Awesome, SVG icons)
                         has_icon_class = False  # Initialize before try block
@@ -248,12 +256,18 @@ def scrape_all_express_pages(base_url: str, max_pages: int | None = 10) -> list[
                                 # Convert to list first to avoid iterator issues with BeautifulSoup versions
                                 nodes = list(a.descendants)
                                 has_icon_class = any(
-                                    "fas" in str(c).lower() or "tnt-chevron" in str(c).lower()
+                                    "fas" in str(c).lower()
+                                    or "tnt-chevron" in str(c).lower()
                                     for node in nodes
-                                    if hasattr(node, "get") and (c := node.get("class", []))
+                                    if hasattr(node, "get")
+                                    and (c := node.get("class", []))
                                 )
-                            except Exception as e:  # Handle edge cases with BeautifulSoup versions
-                                logger.debug(f"Error checking icon class for link {a['href']}: {e}")
+                            except (
+                                Exception
+                            ) as e:  # Handle edge cases with BeautifulSoup versions
+                                logger.debug(
+                                    f"Error checking icon class for link {a['href']}: {e}"
+                                )
 
                         # Check for SVG elements inside the link
                         if svg is None:
@@ -265,10 +279,10 @@ def scrape_all_express_pages(base_url: str, max_pages: int | None = 10) -> list[
 
                         if is_pagination:
                             new_url = urllib.parse.urljoin(current_url, a["href"])
-                            
+
                             # Normalize URL to use l=100 (reduces total HTTP requests)
                             normalized_url = normalize_express_pagination_url(new_url)
-                            
+
                             if normalized_url not in visited_urls:
                                 page_queue.append(normalized_url)
 
@@ -315,7 +329,9 @@ def _scrape_single_express_page(url: str, visited_urls: set[str]) -> pd.DataFram
         )
 
         if not response.ok:
-            logger.error(f"Failed to fetch Express page {url}: HTTP {response.status_code}")
+            logger.error(
+                f"Failed to fetch Express page {url}: HTTP {response.status_code}"
+            )
             return pd.DataFrame(columns=["url", "title", "summary", "author", "date"])
 
         html = (response.text or "").strip()
@@ -409,9 +425,11 @@ def fetch_guardian_headlines(
     Returns:
         pandas.DataFrame with columns: url, headline, description, author, date
     """
-    # Construct URL if search_term is provided without a base URL
+    # Construct URL if search_content param is provided (Guardian-specific format)
     if search_term and url is None:
-        url = f"{BASE_URLS['guardian']}?q={urllib.parse.quote(search_term)}"
+        url = f"{BASE_URLS['guardian']}/search-6.14.22d8842fe3"
+        params = urllib.parse.urlencode({"search_content": search_term})
+        url += "?" + params
     elif url is None:
         url = BASE_URLS["guardian"]
 
@@ -456,13 +474,13 @@ def fetch_guardian_headlines(
 
     articles = []
 
-    # Find all list containers (contain article links)
+    # Find all list containers with specific Guardian classes
     with FetchingProgress(
         description=f"Scraping Guardian page {url}",
-        total=len(soup.find_all(class_=lambda x: x and "_LIST" in str(x))),
+        total=len(soup.find_all(class_=lambda x: "BT_SQLSTATEMENTS_978_LIST aghor agwrp agjcfe agaifs search-list" in str(x))),
     ) as progress:
         for container_idx, container in enumerate(
-            soup.find_all(class_=lambda x: x and "_LIST" in str(x)), start=1
+            soup.find_all(class_=lambda x: "BT_SQLSTATEMENTS_978_LIST aghor agwrp agjcfe agaifs search-list" in str(x)), start=1
         ):
             task_id = progress.add_task(f"[{container_idx}]...", total=1)
 
@@ -472,8 +490,8 @@ def fetch_guardian_headlines(
                 continue
 
             for link in container.find_all("a", href=True):
-                # Extract headline from h1 inside the anchor
-                headline_elem = link.find("h1", class_="headline")
+                # Extract headline - Guardian uses direct text or h1 with headline class
+                headline_elem = link.select_one("h1.headline") or link
 
                 if not headline_elem:
                     progress.update(task_id, advance=1)
@@ -505,19 +523,19 @@ def fetch_guardian_headlines(
                 # Clean up description (remove extra whitespace, author names in brackets)
                 description = " ".join(description.split())
 
-                # Extract author (pattern: "byAuthorName" after headline)
-                import re
+                # Extract author using direct selector
+                author_elem = link.select_one("span.text-editor.string")
+                author = author_elem.get_text(strip=True) if author_elem else ""
 
-                author_match = re.search(r"by(\S+)", all_text, re.IGNORECASE)
-                author = author_match.group(1).strip() if author_match else ""
-
-                # Extract timestamp (format: YYYYMMDDHHMMSS at end of metadata section)
-                timestamp_match = re.search(r"(\d{14})\b", all_text)
+                # Extract date using specific class (format: "Tue Nov 03 2026")
+                date_elem = link.select_one("span.textelement-publishing.date")
                 article_date = pd.NaT
-                if timestamp_match and len(timestamp_match.group(1)) == 14:
+                if date_elem and date_elem.get_text(strip=True):
                     try:
-                        dt = datetime.strptime(timestamp_match.group(1), "%Y%m%d%H%M%S")
-                        article_date = dt
+                        dt_str = date_elem.get_text(strip=True)
+                        # Parse "Tue Nov 03 2026" format
+                        parsed_dt = datetime.strptime(dt_str, "%a %b %d %Y")
+                        article_date = parsed_dt.date()
                     except ValueError:
                         pass
 
@@ -568,25 +586,35 @@ def normalize_express_pagination_url(url: str) -> str:
     if not url.startswith("http"):
         # Relative URL - prepend base domain
         from tt_news_scraper.const import BASE_URLS
+
         url = BASE_URLS["express"] + url
-    
+
     # Parse query params
-    from urllib.parse import parse_qs, urlparse, urlencode, urlunparse
+    from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
     parsed = urlparse(url)
-    
+
     # Extract existing params
     params = parse_qs(parsed.query)
-    
+
     # Force l=100 (reduces pagination overhead)
     if "l" in params:
         params["l"] = ["100"]
     else:
         params["l"] = ["100"]
-    
+
     # Rebuild URL with normalized params
     new_query = urlencode(params, doseq=True)
-    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, 
-                      parsed.params, new_query, parsed.fragment))
+    return urlunparse(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            new_query,
+            parsed.fragment,
+        )
+    )
 
 
 def scrape_all_guardian_pages(base_url: str, max_pages: int = 10) -> list[dict]:
@@ -651,23 +679,34 @@ def scrape_all_guardian_pages(base_url: str, max_pages: int = 10) -> list[dict]:
                 scraped_df = _scrape_single_guardian_page(current_url, visited_urls)
                 all_articles.extend(scraped_df.to_dict(orient="records"))
 
-                # Extract pagination links and add new pages to queue
-                for nav_elem in soup.find_all(
-                    class_=lambda x: x and "ag_page_navigation" in str(x)
-                ):
-                    for a in nav_elem.find_all("a", href=True):
-                        link_text = a.get_text(strip=True)
+                # Extract pagination links - look for Next/» arrow link
+                next_link_elem = soup.select_one(
+                    "div.ag_page_navigation_top a:contains('Next') or a[title*='Next']"
+                )
 
-                        # Detect pagination-style links (Next/Prev, page numbers, etc.)
-                        is_pagination = any(
-                            word in link_text.lower()
-                            for word in ["next", "prev", "previous"]
-                        ) or len(link_text) > 2 and link_text[0].isdigit()
+                if not next_link_elem and "›" in str(soup):
+                    # Fallback: find the › arrow link directly
+                    for nav in soup.find_all(class_=lambda x: "ag_page_navigation_top" in str(x)):
+                        arrow_link = nav.select_one("a:contains('Next') or a[title*='Next']")
+                        if arrow_link and "›" in arrow_link.get_text(strip=True):
+                            next_link_elem = arrow_link
+                            break
 
-                        if is_pagination:
-                            new_url = urllib.parse.urljoin(current_url, a["href"])
-                            if new_url not in visited_urls:
-                                page_queue.append(new_url)
+                if not next_link_elem:
+                    # Last resort: find any link with › character that's not a page number
+                    for nav in soup.find_all(class_=lambda x: "ag_page_navigation_top" in str(x)):
+                        for a in nav.find_all("a", href=True):
+                            text = a.get_text(strip=True)
+                            if "›" in text and len(text.strip()) <= 3:
+                                next_link_elem = a
+                                break
+                        if next_link_elem:
+                            break
+
+                if next_link_elem:
+                    new_url = urllib.parse.urljoin(current_url, next_link_elem["href"])
+                    if new_url not in visited_urls:
+                        page_queue.append(new_url)
 
                 progress.update(task_id, advance=1)
 
