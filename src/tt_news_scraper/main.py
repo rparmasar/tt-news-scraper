@@ -28,7 +28,7 @@ def main() -> None:
         "--source",
         choices=["express", "guardian"],
         default="express",
-        help="Data source to fetch from (default: express)",
+        help="Data source to fetch from",
     )
     parser.add_argument(
         "--max-pages",
@@ -36,21 +36,21 @@ def main() -> None:
         nargs="?",
         const=10,
         metavar="N",
-        help="Maximum pages of results to fetch (default: 10)",
+        help="Maximum pages of results to fetch",
     )
     parser.add_argument(
         "--search-term",
         type=str,
         default=None,
         metavar="KEYWORD",
-        help='Search keyword for Express (q param) or Guardian mode (e.g., "politics")',
+        help='Search keyword e.g. "politics" or "economy"',
     )
     parser.add_argument(
         "--output",
         type=str,
         default="tt_news_headlines.csv",
         metavar="FILE",
-        help="Output CSV filename (default: tt_news_headlines.csv)",
+        help="Output CSV filepath",
     )
     parser.add_argument(
         "--content",

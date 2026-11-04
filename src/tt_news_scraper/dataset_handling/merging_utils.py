@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def fetch_unified_dataset(
     source: str,
-    max_pages: int | None = None,
+    max_pages: int = 10,
     search_term: str | None = None,
     fetch_content: bool = False,
 ) -> pd.DataFrame:
@@ -27,13 +27,13 @@ def fetch_unified_dataset(
         )
         df = fetch_express_headlines(
             url=None,  # Let the function construct URL from params
-            max_pages=max_pages or 10,
+            max_pages=max_pages,
             search_term=search_term,
         )
     else:  # guardian
         logger.info(f"Fetching headlines from Guardian with search term: {search_term}")
         df = fetch_guardian_headlines(
-            url=None, search_term=search_term, max_pages=max_pages or 10
+            url=None, search_term=search_term, max_pages=max_pages
         )
 
     # Normalize date format to ISO string for consistency
