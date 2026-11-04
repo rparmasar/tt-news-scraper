@@ -41,9 +41,5 @@ ttns --content --max-pages 5
 - Console: Formatted table showing index, title, and URL per article
 - File: Unified CSV with columns `url`, `title`, `summary`, `author`, `date` (and `content` if flag is specified)
 
-see [`sample_output/`](./sample_output/) for example outputs with content.
-
-## Pagination Details
-
-See [`docs/PAGINATION.md`](./docs/PAGINATION.md) for detailed information on how pagination navigation works for both Express and Guardian sources.
+see [`sample_output/`](./sample_output/) for example outputs.
 
