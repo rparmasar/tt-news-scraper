@@ -784,17 +784,15 @@ def scrape_all_guardian_pages(base_url: str, max_pages: int = 10) -> list[dict]:
 
 
 def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFrame:
-    """Scrape articles from a single page.
+    """Fetch and extract articles from a single Guardian page.
 
     Args:
         url: The page URL to scrape
         visited_urls: Set of already-visited URLs (for deduplication)
 
     Returns:
-        list of article dicts
+        DataFrame with columns: url, headline, description, author, date
     """
-    articles = []
-
     try:
         import time
 
@@ -815,183 +813,132 @@ def _scrape_single_guardian_page(url: str, visited_urls: set[str]) -> pd.DataFra
             logger.error(
                 f"Failed to fetch Guardian page {url}: HTTP {response.status_code}"
             )
-            return pd.DataFrame(
-                columns=["url", "headline", "description", "author", "date"]
-            )
+            return pd.DataFrame(columns=["url", "headline", "description", "author", "date"])
         html = (response.text or "").strip()
 
         soup = BeautifulSoup(html, "html.parser")
 
-        # Scrape articles from list containers with progress tracking
-        total_containers = len(soup.find_all(class_=lambda x: x and "_LIST" in str(x)))
-        with FetchingProgress(
-            description=f"Scraping Guardian page {url}",
-            total=total_containers,
-        ) as progress:
-            for container_idx, container in enumerate(
-                soup.find_all(class_=lambda x: x and "_LIST" in str(x)), start=1
-            ):
-                task_id = progress.add_task(
-                    f"[{container_idx}/{total_containers}]...", total=1
-                )
-
-                # Skip sponsored content
-                if "sponsored-list" in str(container.get("class", [])):
-                    progress.update(task_id, advance=1)
-                    continue
-
-                for link in container.find_all("a", href=True):
-                    headline_elem = link.find("h1", class_="headline")
-
-                    if not headline_elem:
-                        progress.update(task_id, advance=1)
-                        continue
-
-                    headline = headline_elem.get_text(strip=True)
-                    link_text = link.get_text(strip=True)
-
-                    # Skip pagination links and short/numeric text
-                    if (
-                        len(headline) < 20
-                        or headline.isdigit()
-                        or "→" in link_text
-                        or "»" in link_text
-                    ):
-                        progress.update(task_id, advance=1)
-                        continue
-
-                    # Extract author using specific class, fallback to empty string if missing
-                    author_elem = link.select_one("span.text-editor.string")
-                    author = author_elem.get_text(strip=True) if author_elem else ""
-
-                # Extract date using multiple possible Guardian selectors and formats
-                article_date = pd.NaT
-
-                # Try primary selector first (Guardian's native date format)
-                for selector in [
-                    "span.textelement-publishing.date",
-                    "time[datetime]",
-                    "div.publish-date",
-                ]:
-                    date_elem = link.select_one(selector)
-                    if date_elem and date_elem.get_text(strip=True):
-                        try:
-                            dt_str = date_elem.get_text(strip=True)
-
-                            # Try Guardian's native format: "Sat Oct 31 2026"
-                            parsed_dt = datetime.strptime(dt_str, "%a %b %d %Y")
-                            article_date = parsed_dt.date()
-                            break
-
-                        except ValueError:
-                            pass
-
-                    elif date_elem and date_elem.has_attr("datetime"):
-                        # Try ISO format from time tag (fallback)
-                        try:
-                            dt_str = date_elem["datetime"]
-                            parsed_dt = datetime.fromisoformat(dt_str.replace("Z", "+00:00"))
-                            article_date = parsed_dt.date()
-                            break
-                        except (ValueError, KeyError):
-                            pass
-
-                # If no date found via selectors, try meta tag parsing
-                if pd.isna(article_date):
-                    meta_tag = link.find("meta")
-                    if meta_tag and meta_tag.has_attr("name"):
-                        name = meta_tag["name"].lower()
-                        content = meta_tag.get("content", "")
-
-                        # Handle article:published_time or datePublished
-                        if "date" in name or "publish" in name:
-                            try:
-                                # Try ISO format from meta content
-                                parsed_dt = datetime.fromisoformat(
-                                    content.replace("Z", "+00:00")
-                                )
-                                article_date = parsed_dt.date()
-                            except (ValueError, AttributeError):
-                                pass
-
-                # If still no date, try to extract from link text as last resort
-                if pd.isna(article_date) and link.get_text(strip=True):
-                    import re
-
-                    text = link.get_text(strip=True)
-                    match = re.search(r"\b(\d{4})\-(\d{2})\-(\d{2})\b", text)
-                    if match:
-                        try:
-                            year, month, day = match.groups()
-                            article_date = datetime(
-                                int(year), int(month), int(day)
-                            ).date()
-                        except ValueError:
-                            pass
-
-                # If still no date, check sibling elements for date info (Guardian sometimes puts date in adjacent div)
-                if pd.isna(article_date):
-                    import re
-
-                    # Look at parent container and siblings for date patterns
-                    parent = link.parent
-                    if parent is not None:
-                        # Try to find text with date-like patterns near the link
-                        all_text = "".join(parent.get_text(strip=True).split())
-                        match = re.search(r"(\d{4})(\d{2})(\d{2})", all_text)
-                        if match and len(match.group(0)) == 8:
-                            try:
-                                year, month, day = match.groups()
-                                article_date = datetime(
-                                    int(year), int(month), int(day)
-                                ).date()
-                            except ValueError:
-                                pass
-
-                # If still no date, check the immediate sibling elements for date info
-                if pd.isna(article_date):
-                    import re
-
-                    # Look at siblings of the link for date patterns (common in Guardian HTML)
-                    all_siblings_text = "".join(
-                        s.get_text(strip=True) for s in parent.find_all(string=True, recursive=False)
-                    )
-                    match = re.search(r"(\d{4})(\d{2})(\d{2})", all_siblings_text)
-                    if match and len(match.group(0)) == 8:
-                        try:
-                            year, month, day = match.groups()
-                            article_date = datetime(
-                                int(year), int(month), int(day)
-                            ).date()
-                        except ValueError:
-                            pass
-
-                    article = {
-                        "url": link["href"],
-                        "headline": headline,
-                        "description": "",  # Will be fetched later for full content
-                        "author": author,
-                        "date": article_date,
-                    }
-
-                    # Only add if URL not already visited (prevents duplicates across pages)
-                    if article["url"] not in visited_urls:
-                        articles.append(article)
-                        visited_urls.add(article["url"])
-
-                progress.update(task_id, advance=1)
+        # Extract articles using centralized helper
+        articles = _extract_guardian_articles_from_html(soup, url)
 
     except Exception as e:
-        logger.error(f"Error scraping {url}: {e}")
+        logger.error(f"Error fetching {url}: {e}")
+        return pd.DataFrame(columns=["url", "headline", "description", "author", "date"])
 
-    # Convert URLs to absolute format for consistency
-    base_domain = "https://www.guardian.co.tt"
+    # Convert to DataFrame and normalize URLs
     df = pd.DataFrame(articles).copy()
     if not df.empty:
+        base_domain = "https://www.guardian.co.tt"
         df["url"] = [
             base_domain + url if not url.startswith("http") else url
             for url in df["url"]
         ]
 
-    # Rename columns to canonical schema before returning
     return _rename_guardian_columns(df)
+
+
+
+def _extract_guardian_articles_from_html(soup, url: str) -> list[dict]:
+    """Extract article data from Guardian HTML using centralized selectors.
+
+    Args:
+        soup: BeautifulSoup parsed HTML object
+        url: The page URL (for logging/debugging)
+
+    Returns:
+        List of dicts with keys: url, headline, description, author, date
+    """
+    articles = []
+
+    # Main container for search results per requirements
+    main_container = soup.select_one(
+        'div.BT_SQLSTATEMENTS_978_LIST.aghor.agwrp.agjcfe.agaifs.search-list'
+    )
+
+    if not main_container:
+        logger.debug(f"No main container found in {url}")
+        return articles
+
+    # Extract all article links from the main container
+    for link in main_container.find_all('a', href=True):
+        headline_elem = link.select_one('h1.headline')
+
+        if not headline_elem:
+            continue
+
+        headline = headline_elem.get_text(strip=True)
+
+        # Skip pagination links and short/numeric text
+        link_text = link.get_text(strip=True)
+        if len(headline) < 20 or headline.isdigit() or '→' in link_text or '»' in link_text:
+            continue
+
+        # Extract author using specific class per requirements
+        author_elem = link.select_one('span.text-editor.string')
+        author = author_elem.get_text(strip=True) if author_elem else ''
+
+        # Extract date using Guardian TT's actual HTML structure
+        article_date = pd.NaT
+
+        # Try primary selector: span with both classes
+        for selector in ['span.textelement-publishing.date', 'span.datetime']:
+            date_elem = link.select_one(selector)
+            if date_elem and date_elem.get_text(strip=True):
+                try:
+                    dt_str = date_elem.get_text(strip=True).strip()
+
+                    # Guardian TT uses "Sat Oct 31 2026" format or YYYYMMDD
+                    if len(dt_str) == 8 and dt_str.isdigit():
+                        year, month, day = int(dt_str[0:4]), int(dt_str[4:6]), int(dt_str[6:8])
+                        article_date = datetime(year, month, day).date()
+                        break
+                    else:
+                        parsed_dt = datetime.strptime(dt_str, '%a %b %d %Y')
+                        article_date = parsed_dt.date()
+                        break
+
+                except ValueError as e:
+                    logger.debug(f"Date parse error for {dt_str}: {e}")
+
+        # If no date found via selectors, try meta tag parsing
+        if pd.isna(article_date):
+            meta_tag = link.find('meta')
+            if meta_tag and meta_tag.has_attr('name'):
+                name = meta_tag['name'].lower()
+                content = meta_tag.get('content', '')
+
+                # Handle article:published_time or datePublished
+                if 'date' in name or 'publish' in name:
+                    try:
+                        parsed_dt = datetime.fromisoformat(content.replace('Z', '+00:00'))
+                        article_date = parsed_dt.date()
+                    except (ValueError, AttributeError):
+                        pass
+
+        # If still no date, try to extract from link text as last resort
+        if pd.isna(article_date) and link.get_text(strip=True):
+            import re
+
+            text = link.get_text(strip=True)
+            match = re.search(r'\b(\d{4})-(\d{2})-(\d{2})\b', text)
+            if match:
+                try:
+                    year, month, day = match.groups()
+                    article_date = datetime(int(year), int(month), int(day)).date()
+                except ValueError:
+                    pass
+
+        # Build article dict with canonical column names
+        article = {
+            'url': link['href'],
+            'headline': headline,
+            'description': '',  # Will be fetched later for full content
+            'author': author,
+            'date': article_date,
+        }
+
+        articles.append(article)
+
+    return articles
+
+
