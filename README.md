@@ -4,6 +4,8 @@
 
 A CLI tool for fetching news headlines and metadata from Trinidad Express and Guardian.
 
+![demo showing the scraper being used to fetch 100 chaguanas articles + their content from tt express](docs/ttns_demo.gif)
+
 ## Usage
 
 ```bash
